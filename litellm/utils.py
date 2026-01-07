@@ -7804,6 +7804,7 @@ class ProviderConfigManager:
             LlmProviders.WATSONX_TEXT: (lambda: litellm.IBMWatsonXAIConfig(), False),
             LlmProviders.EMPOWER: (lambda: litellm.EmpowerChatConfig(), False),
             LlmProviders.MINIMAX: (lambda: litellm.MinimaxChatConfig(), False),
+            LlmProviders.XIAOMI_MIMO: (lambda: litellm.XiaomiMiMoChatConfig(), False),
             LlmProviders.GITHUB: (lambda: litellm.GithubChatConfig(), False),
             LlmProviders.COMPACTIFAI: (lambda: litellm.CompactifAIChatConfig(), False),
             LlmProviders.GITHUB_COPILOT: (lambda: litellm.GithubCopilotConfig(), False),

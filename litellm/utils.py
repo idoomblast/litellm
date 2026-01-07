@@ -7515,6 +7515,8 @@ class ProviderConfigManager:
             return litellm.EmpowerChatConfig()
         elif litellm.LlmProviders.MINIMAX == provider:            
             return litellm.MinimaxChatConfig()
+        elif litellm.LlmProviders.XIAOMI_MIMO == provider:
+            return litellm.XiaomiMiMoChatConfig()
         elif litellm.LlmProviders.GITHUB == provider:
             return litellm.GithubChatConfig()
         elif litellm.LlmProviders.COMPACTIFAI == provider:

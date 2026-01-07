@@ -12,6 +12,7 @@
     "no-prototype-builtins": "off",
     "no-useless-catch": "off",
     "no-useless-escape": "off",
-    "no-self-assign": "off"
+    "no-self-assign": "off",
+    "react/no-unescaped-entities": "off"
   }
 }

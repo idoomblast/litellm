@@ -2999,6 +2999,34 @@
     "default_model_placeholder": "gpt-3.5-turbo"
   },
   {
+    "provider": "XIAOMI_MIMO",
+    "provider_display_name": "Xiaomi MiMo",
+    "litellm_provider": "xiaomi_mimo",
+    "credential_fields": [
+      {
+        "key": "api_base",
+        "label": "API Base",
+        "placeholder": "https://api.xiaomimimo.com/v1",
+        "tooltip": null,
+        "required": false,
+        "field_type": "text",
+        "options": null,
+        "default_value": "https://api.xiaomimimo.com/v1"
+      },
+      {
+        "key": "api_key",
+        "label": "API Key",
+        "placeholder": null,
+        "tooltip": null,
+        "required": true,
+        "field_type": "password",
+        "options": null,
+        "default_value": null
+      }
+    ],
+    "default_model_placeholder": "xiaomi_mimo/mimo-v2-flash"
+  },
+  {
     "provider": "XINFERENCE",
     "provider_display_name": "Xinference",
     "litellm_provider": "xinference",

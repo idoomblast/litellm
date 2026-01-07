@@ -2432,6 +2432,9 @@ def completion(  # type: ignore # noqa: PLR0915
         elif custom_llm_provider == "hosted_vllm":
             api_base = (
                 api_base or litellm.api_base or get_secret_str("HOSTED_VLLM_API_BASE")
+        elif custom_llm_provider == "xiaomi_mimo":
+                or get_secret_str("XIAOMI_MIMO_API_KEY")
+                or get_secret_str("XIAOMI_MIMO_API_BASE")
             )
 
             response = base_llm_http_handler.completion(

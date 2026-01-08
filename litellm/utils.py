@@ -7845,6 +7845,7 @@ class ProviderConfigManager:
             LlmProviders.CODESTRAL: (lambda: litellm.MistralConfig(), False),
             LlmProviders.NVIDIA_NIM: (lambda: litellm.NvidiaNimConfig(), False),
             LlmProviders.CEREBRAS: (lambda: litellm.CerebrasConfig(), False),
+            LlmProviders.CHUTES: (lambda: litellm.ChutesChatConfig(), False),
             LlmProviders.BASETEN: (lambda: litellm.BasetenConfig(), False),
             LlmProviders.VOLCENGINE: (lambda: litellm.VolcEngineConfig(), False),
             LlmProviders.TEXT_COMPLETION_CODESTRAL: (

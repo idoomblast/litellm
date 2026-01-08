@@ -625,6 +625,34 @@
     "default_model_placeholder": "gpt-3.5-turbo"
   },
   {
+    "provider": "CHUTES",
+    "provider_display_name": "Chutes",
+    "litellm_provider": "chutes",
+    "credential_fields": [
+      {
+        "key": "api_base",
+        "label": "API Base",
+        "placeholder": "https://llm.chutes.ai/v1",
+        "tooltip": null,
+        "required": false,
+        "field_type": "text",
+        "options": null,
+        "default_value": "https://llm.chutes.ai/v1"
+      },
+      {
+        "key": "api_key",
+        "label": "API Key",
+        "placeholder": null,
+        "tooltip": null,
+        "required": true,
+        "field_type": "password",
+        "options": null,
+        "default_value": null
+      }
+    ],
+    "default_model_placeholder": "chutes/zai-org/GLM-4.7-TEE"
+  },
+  {
     "provider": "Cohere",
     "provider_display_name": "Cohere",
     "litellm_provider": "cohere",

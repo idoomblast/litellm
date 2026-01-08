@@ -396,14 +396,14 @@
       "display_name": "Chutes (`chutes`)",
       "endpoints": {
         "chat_completions": true,
-        "messages": false,
+        "messages": true,
         "responses": false,
         "embeddings": true,
-        "image_generations": false,
+        "image_generations": true,
         "audio_transcriptions": false,
         "audio_speech": false,
-        "moderations": false,
-        "batches": false,
+        "moderations": true,
+        "batches": true,
         "rerank": false,
         "a2a": false
       }

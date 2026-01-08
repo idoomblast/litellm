@@ -61,6 +61,97 @@ for chunk in response:
     print(chunk)
 ```
 
+## Usage - Thinking / `reasoning_content`
+
+LiteLLM translates OpenAI's `reasoning_effort` to Xiaomi MiMo's `thinking` parameter.
+
+Xiaomi MiMo only supports the `thinking` parameter with `{"type": "enabled"}` or `{"type": "disabled"}` format.
+
+| reasoning_effort | thinking |
+| ---------------- | -------- |
+| "none"           | {"type": "disabled"} |
+| "minimal"        | {"type": "disabled"} |
+| "low"            | {"type": "enabled"} |
+| "medium"         | {"type": "enabled"} |
+| "high"           | {"type": "enabled"} |
+
+<Tabs>
+<TabItem value="sdk" label="SDK">
+
+```python
+from litellm import completion
+import os
+
+os.environ['XIAOMI_MIMO_API_KEY'] = ""
+
+# Enable thinking mode
+response = completion(
+    model="xiaomi_mimo/mimo-v2-flash",
+    messages=[{"role": "user", "content": "What is 101*3?"}],
+    reasoning_effort="low",
+)
+
+print("Reasoning Content:")
+print(response.choices[0].message.reasoning_content)
+
+print("\nFinal Response:")
+print(response.choices[0].message.content)
+```
+
+</TabItem>
+
+<TabItem value="thinking_param" label="Using thinking parameter directly">
+
+```python
+from litellm import completion
+import os
+
+os.environ['XIAOMI_MIMO_API_KEY'] = ""
+
+# Enable thinking mode using thinking parameter
+response = completion(
+    model="xiaomi_mimo/mimo-v2-flash",
+    messages=[{"role": "user", "content": "What is 101*3?"}],
+    thinking={"type": "enabled"},
+)
+
+print("Reasoning Content:")
+print(response.choices[0].message.reasoning_content)
+
+print("\nFinal Response:")
+print(response.choices[0].message.content)
+```
+
+</TabItem>
+
+<TabItem value="proxy" label="Proxy">
+
+```yaml
+model_list:
+  - model_name: xiaomi-mimo-thinking
+    litellm_params:
+      model: xiaomi_mimo/mimo-v2-flash
+      api_key: os.environ/XIAOMI_MIMO_API_KEY
+```
+
+```bash
+curl http://0.0.0.0:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $LITELLM_KEY" \
+  -d '{
+    "model": "xiaomi-mimo-thinking",
+    "messages": [{"role": "user", "content": "What is 101*3?"}],
+    "reasoning_effort": "low"
+  }'
+```
+
+</TabItem>
+</Tabs>
+
+:::info
+When using thinking mode, Xiaomi MiMo returns a `reasoning_content` field alongside the regular `content` in the response.
+:::
+
 
 ## Usage with LiteLLM Proxy Server
 

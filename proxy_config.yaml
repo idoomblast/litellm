@@ -1,0 +1,6 @@
+general_settings:
+  disable_error_logs: false
+  store_model_in_db: true
+  store_prompts_in_spend_logs: true
+  proxy_batch_write_at: 60
+  database_connection_pool_limit: 10

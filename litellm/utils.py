@@ -7527,6 +7527,8 @@ class ProviderConfigManager:
             return litellm.GigaChatConfig()
         elif litellm.LlmProviders.RAGFLOW == provider:
             return litellm.RAGFlowConfig()
+        elif litellm.LlmProviders.CHUTES == provider:
+            return litellm.ChutesChatConfig()
         elif (
             litellm.LlmProviders.CUSTOM == provider
             or litellm.LlmProviders.CUSTOM_OPENAI == provider

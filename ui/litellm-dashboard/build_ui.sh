@@ -47,10 +47,6 @@ if [ $? -eq 0 ]; then
 
   rm -rf ./out
 
-  rm -rf node_modules
-
-  rm -rf .next
-
   echo "Deployment completed."
 else
   echo "Build failed. Deployment aborted."

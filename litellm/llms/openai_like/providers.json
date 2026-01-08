@@ -47,13 +47,6 @@
       "max_completion_tokens": "max_tokens"
     }
   },
-  "chutes": {
-    "base_url": "https://llm.chutes.ai/v1/",
-    "api_key_env": "CHUTES_API_KEY",
-    "param_mappings": {
-      "max_completion_tokens": "max_tokens"
-    }
-  },
   "llamagate": {
     "base_url": "https://api.llamagate.dev/v1",
     "api_key_env": "LLAMAGATE_API_KEY",

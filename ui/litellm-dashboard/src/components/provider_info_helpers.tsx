@@ -45,6 +45,7 @@ export enum Providers {
   SAP = "SAP Generative AI Hub",
   Watsonx = "Watsonx",
   xiaomi_mimo = "Xiaomi MiMo",
+  Chutes = "Chutes",
 }
 
 export const provider_map: Record<string, string> = {
@@ -94,6 +95,7 @@ export const provider_map: Record<string, string> = {
   SAP: "sap",
   Watsonx: "watsonx",
   xiaomi_mimo: "xiaomi_mimo",
+  Chutes: "chutes",
 };
 
 const asset_logos_folder = "../ui/assets/logos/";
@@ -144,6 +146,7 @@ export const providerLogoMap: Record<string, string> = {
   [Providers.DeepInfra]: `${asset_logos_folder}deepinfra.png`,
   [Providers.SAP]: `${asset_logos_folder}sap.png`,
   [Providers.xiaomi_mimo]: `${asset_logos_folder}xiaomi_mimo.png`,
+  [Providers.Chutes]: `${asset_logos_folder}chutes.png`,
 };
 
 export const getProviderLogoAndName = (providerValue: string): { logo: string; displayName: string } => {
@@ -211,6 +214,8 @@ export const getPlaceholder = (selectedProvider: string): string => {
     return "watsonx/ibm/granite-3-3-8b-instruct";
   } else if (selectedProvider === Providers.xiaomi_mimo) {
     return "xiaomi_mimo/mimo-v2-flash";
+  } else if (selectedProvider === Providers.Chutes) {
+    return "chutes/model-name";
   } else {
     return "gpt-3.5-turbo";
   }

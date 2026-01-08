@@ -271,6 +271,7 @@ LLM_CONFIG_NAMES = (
     "LiteLLMProxyChatConfig",
     "VLLMConfig",
     "DeepSeekChatConfig",
+    "ChutesChatConfig",
     "XiaomiMiMoChatConfig",
     "LMStudioChatConfig",
     "LmStudioEmbeddingConfig",
@@ -1026,6 +1027,7 @@ _LLM_CONFIGS_IMPORT_MAP = {
     ),
     "VLLMConfig": (".llms.vllm.completion.transformation", "VLLMConfig"),
     "DeepSeekChatConfig": (".llms.deepseek.chat.transformation", "DeepSeekChatConfig"),
+    "ChutesChatConfig": (".llms.chutes.chat.transformation", "ChutesChatConfig"),
     "XiaomiMiMoChatConfig": (".llms.xiaomi_mimo.chat.transformation", "XiaomiMiMoChatConfig"),
     "LMStudioChatConfig": (".llms.lm_studio.chat.transformation", "LMStudioChatConfig"),
     "LmStudioEmbeddingConfig": (

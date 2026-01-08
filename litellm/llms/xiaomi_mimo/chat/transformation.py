@@ -17,7 +17,7 @@ class XiaomiMiMoChatConfig(OpenAIGPTConfig):
         Reference: https://platform.xiaomimimo.com/#/docs/api/text-generation/openai-api
         """
         params = super().get_supported_openai_params(model)
-        params.extend(["thinking"])
+        params.extend(["thinking", "reasoning_effort"])
         return params
 
     def map_openai_params(
@@ -30,7 +30,9 @@ class XiaomiMiMoChatConfig(OpenAIGPTConfig):
         """
         Map OpenAI params to Xiaomi MiMo params.
 
-        Handles `thinking` parameter for Xiaomi MiMo models.
+        Handles `thinking` and `reasoning_effort` parameters for Xiaomi MiMo models.
+        Xiaomi MiMo only supports `thinking` parameter with `{"type": "enabled"}` or `{"type": "disabled"}` format.
+        
         Reference: https://platform.xiaomimimo.com/#/docs/api/text-generation/openai-api
         """
         # Let parent handle standard params first
@@ -38,10 +40,24 @@ class XiaomiMiMoChatConfig(OpenAIGPTConfig):
             non_default_params, optional_params, model, drop_params
         )
 
-        # Handle thinking parameter - pass it through as-is
+        # Pop thinking and reasoning_effort from optional_params
         thinking_value = optional_params.pop("thinking", None)
+        reasoning_effort = optional_params.pop("reasoning_effort", None)
+
+        # Handle thinking parameter - pass it through as-is if valid
         if thinking_value is not None:
-            optional_params["thinking"] = thinking_value
+            if isinstance(thinking_value, dict) and "type" in thinking_value:
+                # Xiaomi MiMo expects thinking parameter with type: "enabled" or "disabled"
+                optional_params["thinking"] = thinking_value
+
+        # Handle reasoning_effort - map to thinking parameter
+        elif reasoning_effort is not None:
+            # Map reasoning_effort to thinking parameter
+            # Xiaomi MiMo only supports {"type": "enabled"} or {"type": "disabled"}
+            if reasoning_effort in ["none", "minimal"]:
+                optional_params["thinking"] = {"type": "disabled"}
+            elif reasoning_effort in ["low", "medium", "high"]:
+                optional_params["thinking"] = {"type": "enabled"}
 
         return optional_params
 

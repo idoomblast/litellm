@@ -23,6 +23,8 @@ fi
 echo "Contents of ui_colors.json:"
 cat ui_colors.json
 
+# Install npm dependencies with legacy peer deps
+npm install --legacy-peer-deps
 # Run npm build
 npm run build
 
@@ -44,6 +46,10 @@ if [ $? -eq 0 ]; then
   cp -r ./out/* "$destination_dir"
 
   rm -rf ./out
+
+  rm -rf node_modules
+
+  rm -rf .next
 
   echo "Deployment completed."
 else

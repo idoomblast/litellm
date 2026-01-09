@@ -24,12 +24,12 @@ class ChutesChatConfig(OpenAIGPTConfig):
 
     def get_supported_openai_params(self, model: str) -> list:
         """
-        Chutes supports most OpenAI parameters including thinking.
+        Chutes supports most OpenAI parameters including thinking and reasoning_effort.
 
         Reference: https://chutes.ai/docs
         """
         params = super().get_supported_openai_params(model)
-        params.extend(["thinking"])
+        params.extend(["thinking", "reasoning_effort"])
         return params
 
     def map_openai_params(
@@ -42,22 +42,48 @@ class ChutesChatConfig(OpenAIGPTConfig):
         """
         Map OpenAI params to Chutes params.
 
-        Chutes is OpenAI-compatible, so most params can be passed through
-        with minimal transformation. The thinking parameter is passed through
-        as-is for reasoning models.
+        Handles `thinking` and `reasoning_effort` parameters for Chutes models.
+        Maps implementing `chat_template_kwargs.enable_thinking` format.
 
         Reference: https://chutes.ai/docs
         """
-        # Handle thinking parameter before parent processing
-        thinking_value = non_default_params.get("thinking")
-        if thinking_value is not None:
-            # Pass through thinking parameter as-is
-            optional_params["thinking"] = thinking_value
-
-        # Let parent handle standard params
+        # Let parent handle standard params first
         optional_params = super().map_openai_params(
             non_default_params, optional_params, model, drop_params
         )
+
+        # Pop thinking and reasoning_effort from optional_params
+        thinking_value = optional_params.pop("thinking", None)
+        reasoning_effort = optional_params.pop("reasoning_effort", None)
+
+        # Get or initialize chat_template_kwargs
+        chat_template_kwargs = optional_params.get("chat_template_kwargs", {})
+        
+        # Determine enable_thinking value
+        enable_thinking = None
+        
+        # Process thinking parameter first
+        if thinking_value is not None:
+            if isinstance(thinking_value, bool):
+                # Direct boolean format
+                enable_thinking = thinking_value
+            elif isinstance(thinking_value, dict):
+                # Handle dict format with "type" field
+                thinking_type = thinking_value.get("type", "").lower()
+                enable_thinking = thinking_type == "enabled"
+        
+        # Process reasoning_effort if thinking not provided
+        elif reasoning_effort is not None:
+            if reasoning_effort in ["low", "medium", "high"]:
+                enable_thinking = True
+            elif reasoning_effort in ["none", "minimal"]:
+                enable_thinking = False
+        
+        # Update chat_template_kwargs only if we have a value
+        if enable_thinking is not None:
+            chat_template_kwargs["enable_thinking"] = enable_thinking
+            optional_params["chat_template_kwargs"] = chat_template_kwargs
+
         return optional_params
 
     @overload

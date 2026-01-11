@@ -15,6 +15,7 @@ import TabItem from '@theme/TabItem';
 | Mistral | `vertex_ai/mistral-*` | [Vertex AI - Mistral Models](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/mistral) |
 | AI21 (Jamba) | `vertex_ai/jamba-*` | [Vertex AI - AI21 Models](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/ai21) |
 | Qwen | `vertex_ai/qwen/*` | [Vertex AI - Qwen Models](https://cloud.google.com/vertex-ai/generative-ai/docs/maas/qwen) |
+| ZhiPu AI (GLM) | `vertex_ai/zai-org/{MODEL}` | [Vertex AI - GLM Models](https://cloud.google.com/vertex-ai/generative-ai/docs/maas/zaiorg) |
 | OpenAI (GPT-OSS) | `vertex_ai/openai/gpt-oss-*` | [Vertex AI - GPT-OSS Models](https://console.cloud.google.com/vertex-ai/publishers/openai/model-garden/) |
 
 ## Vertex AI - Anthropic (Claude)
@@ -645,6 +646,86 @@ curl --location 'http://0.0.0.0:4000/chat/completions' \
       --header 'Content-Type: application/json' \
       --data '{
             "model": "vertex-qwen", # 👈 the 'model_name' in config
+            "messages": [
+                {
+                "role": "user",
+                "content": "what llm are you"
+                }
+            ],
+        }'
+```
+
+</TabItem>
+</Tabs>
+
+
+## VertexAI ZhiPu AI (GLM) API
+
+| Property | Details |
+|----------|---------|
+| Provider Route | `vertex_ai/zai-org/{MODEL}` |
+| Vertex Documentation | [Vertex AI - ZhiPu AI Models](https://cloud.google.com/vertex-ai/generative-ai/docs/maas/zaiorg) |
+
+**LiteLLM Supports all Vertex AI ZhiPu AI (GLM) Models.** Ensure you use the `vertex_ai/zai-org/` prefix for all Vertex AI ZhiPu AI models.
+
+| Model Name       | Usage                        |
+|------------------|------------------------------|
+| vertex_ai/zai-org/glm-4.7-maas | `completion('vertex_ai/zai-org/glm-4.7-maas', messages)` |
+
+#### Usage
+
+<Tabs>
+<TabItem value="sdk" label="SDK">
+
+```python
+from litellm import completion
+import os
+
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = ""
+
+model = "zai-org/glm-4.7-maas"
+
+vertex_ai_project = "your-vertex-project" # can also set this as os.environ["VERTEXAI_PROJECT"]
+vertex_ai_location = "your-vertex-location" # can also set this as os.environ["VERTEXAI_LOCATION"]
+
+response = completion(
+    model="vertex_ai/" + model,
+    messages=[{"role": "user", "content": "hi"}],
+    vertex_ai_project=vertex_ai_project,
+    vertex_ai_location=vertex_ai_location,
+)
+print("\\nModel Response", response)
+```
+</TabItem>
+<TabItem value="proxy" label="Proxy">
+
+**1. Add to config**
+
+```yaml
+model_list:
+    - model_name: vertex-glm
+      litellm_params:
+        model: vertex_ai/zai-org/glm-4.7-maas
+        vertex_ai_project: "my-test-project"
+        vertex_ai_location: "us-central1"
+```
+
+**2. Start proxy**
+
+```bash
+litellm --config /path/to/config.yaml
+
+# RUNNING at http://0.0.0.0:4000
+```
+
+**3. Test it!**
+
+```bash
+curl --location 'http://0.0.0.0:4000/chat/completions' \\
+      --header 'Authorization: Bearer sk-1234' \\
+      --header 'Content-Type: application/json' \\
+      --data '{
+            "model": "vertex-glm", # 👈 the 'model_name' in config
             "messages": [
                 {
                 "role": "user",

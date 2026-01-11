@@ -6819,6 +6819,22 @@
         "supports_vision": false,
         "supports_web_search": false
     },
+    "chutes/zai-org/GLM-4.6V": {
+        "max_input_tokens": 131072,
+        "max_output_tokens": 65536,
+        "max_tokens": 65536,
+        "input_cost_per_token": "3e-7",
+        "output_cost_per_token": "9e-7",
+        "litellm_provider": "chutes",
+        "mode": "chat",
+        "supports_function_calling": true,
+        "supports_parallel_function_calling": true,
+        "supports_prompt_caching": false,
+        "supports_reasoning": true,
+        "supports_response_schema": true,
+        "supports_vision": true,
+        "supports_web_search": false
+    },
     "chutes/zai-org/GLM-4.7-TEE": {
         "max_input_tokens": 202752,
         "max_output_tokens": 65535,

@@ -324,6 +324,8 @@ class CallTypes(str, Enum):
     adelete_container = "adelete_container"
     list_container_files = "list_container_files"
     alist_container_files = "alist_container_files"
+    upload_container_file = "upload_container_file"
+    aupload_container_file = "aupload_container_file"
 
     acancel_fine_tuning_job = "acancel_fine_tuning_job"
     cancel_fine_tuning_job = "cancel_fine_tuning_job"
@@ -3015,6 +3017,7 @@ class LlmProviders(str, Enum):
     AUTO_ROUTER = "auto_router"
     VERCEL_AI_GATEWAY = "vercel_ai_gateway"
     DOTPROMPT = "dotprompt"
+    MANUS = "manus"
     WANDB = "wandb"
     OVHCLOUD = "ovhcloud"
     LEMONADE = "lemonade"
@@ -3027,6 +3030,7 @@ class LlmProviders(str, Enum):
     NANOGPT = "nano-gpt"
     POE = "poe"
     CHUTES = "chutes"
+    XIAOMI_MIMO = "xiaomi_mimo"
 
 
 

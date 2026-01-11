@@ -9,7 +9,7 @@ warnings.filterwarnings("ignore", message=".*conflict with protected namespace.*
 warnings.filterwarnings(
     "ignore", message=".*Accessing the.*attribute on the instance is deprecated.*"
 )
-### INIT VARIABLES #######################
+### INIT VARIABLES ########################
 import threading
 import os
 from typing import (
@@ -134,6 +134,7 @@ _custom_logger_compatible_callbacks_literal = Literal[
     "bitbucket",
     "gitlab",
     "cloudzero",
+    "focus",
     "posthog",
     "levo",
 ]
@@ -486,6 +487,7 @@ vertex_mistral_models: Set = set()
 vertex_openai_models: Set = set()
 vertex_minimax_models: Set = set()
 vertex_moonshot_models: Set = set()
+vertex_zai_models: Set = set()
 ai21_models: Set = set()
 ai21_chat_models: Set = set()
 nlp_cloud_models: Set = set()
@@ -557,6 +559,8 @@ stability_models: Set = set()
 github_copilot_models: Set = set()
 minimax_models: Set = set()
 aws_polly_models: Set = set()
+gigachat_models: Set = set()
+llamagate_models: Set = set()
 
 
 def is_bedrock_pricing_only_model(key: str) -> bool:
@@ -662,6 +666,9 @@ def add_known_models():
         elif value.get("litellm_provider") == "vertex_ai-moonshot_models":
             key = key.replace("vertex_ai/", "")
             vertex_moonshot_models.add(key)
+        elif value.get("litellm_provider") == "vertex_ai-zai_models":
+            key = key.replace("vertex_ai/", "")
+            vertex_zai_models.add(key)
         elif value.get("litellm_provider") == "ai21":
             if value.get("mode") == "chat":
                 ai21_chat_models.add(key)
@@ -809,6 +816,10 @@ def add_known_models():
             minimax_models.add(key)
         elif value.get("litellm_provider") == "aws_polly":
             aws_polly_models.add(key)
+        elif value.get("litellm_provider") == "gigachat":
+            gigachat_models.add(key)
+        elif value.get("litellm_provider") == "llamagate":
+            llamagate_models.add(key)
 
 
 add_known_models()
@@ -944,7 +955,8 @@ models_by_provider: dict = {
     | vertex_language_models
     | vertex_deepseek_models
     | vertex_minimax_models
-    | vertex_moonshot_models,
+    | vertex_moonshot_models
+    | vertex_zai_models,
     "ai21": ai21_models,
     "bedrock": bedrock_models | bedrock_converse_models,
     "petals": petals_models,
@@ -1015,6 +1027,8 @@ models_by_provider: dict = {
     "github_copilot": github_copilot_models,
     "minimax": minimax_models,
     "aws_polly": aws_polly_models,
+    "gigachat": gigachat_models,
+    "llamagate": llamagate_models,
 }
 
 # mapping for those models which have larger equivalents
@@ -1330,6 +1344,7 @@ if TYPE_CHECKING:
     from .llms.bedrock.chat.invoke_transformations.amazon_llama_transformation import AmazonLlamaConfig as AmazonLlamaConfig
     from .llms.bedrock.chat.invoke_transformations.amazon_deepseek_transformation import AmazonDeepSeekR1Config as AmazonDeepSeekR1Config
     from .llms.bedrock.chat.invoke_transformations.amazon_mistral_transformation import AmazonMistralConfig as AmazonMistralConfig
+    from .llms.bedrock.chat.invoke_transformations.amazon_moonshot_transformation import AmazonMoonshotConfig as AmazonMoonshotConfig
     from .llms.bedrock.chat.invoke_transformations.amazon_titan_transformation import AmazonTitanConfig as AmazonTitanConfig
     from .llms.bedrock.chat.invoke_transformations.amazon_twelvelabs_pegasus_transformation import AmazonTwelveLabsPegasusConfig as AmazonTwelveLabsPegasusConfig
     from .llms.bedrock.chat.invoke_transformations.base_invoke_transformation import AmazonInvokeConfig as AmazonInvokeConfig
@@ -1359,6 +1374,7 @@ if TYPE_CHECKING:
     from .llms.azure.responses.o_series_transformation import AzureOpenAIOSeriesResponsesAPIConfig as AzureOpenAIOSeriesResponsesAPIConfig
     from .llms.xai.responses.transformation import XAIResponsesAPIConfig as XAIResponsesAPIConfig
     from .llms.litellm_proxy.responses.transformation import LiteLLMProxyResponsesAPIConfig as LiteLLMProxyResponsesAPIConfig
+    from .llms.manus.responses.transformation import ManusResponsesAPIConfig as ManusResponsesAPIConfig
     from .llms.gemini.interactions.transformation import GoogleAIStudioInteractionsConfig as GoogleAIStudioInteractionsConfig
     from .llms.openai.chat.o_series_transformation import OpenAIOSeriesConfig as OpenAIOSeriesConfig, OpenAIOSeriesConfig as OpenAIO1Config
     from .llms.anthropic.skills.transformation import AnthropicSkillsConfig as AnthropicSkillsConfig
@@ -1552,6 +1568,16 @@ if TYPE_CHECKING:
 
 # Track if async client cleanup has been registered (for lazy loading)
 _async_client_cleanup_registered = False
+
+# Eager loading for backwards compatibility with VCR and other HTTP recording tools
+# When LITELLM_DISABLE_LAZY_LOADING is set, lazy-loaded attributes are loaded at import time
+# For now, this only affects encoding (tiktoken) as it was the only reported issue
+# See: https://github.com/BerriAI/litellm/issues/18659
+# This ensures encoding is initialized before VCR starts recording HTTP requests
+if os.getenv("LITELLM_DISABLE_LAZY_LOADING", "").lower() in ("1", "true", "yes", "on"):
+    # Load encoding at import time (pre-#18070 behavior)
+    # This ensures encoding is initialized before VCR starts recording
+    from .main import encoding
 
 
 def __getattr__(name: str) -> Any:

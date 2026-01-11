@@ -44,6 +44,8 @@ export enum Providers {
   xAI = "xAI",
   SAP = "SAP Generative AI Hub",
   Watsonx = "Watsonx",
+  xiaomi_mimo = "Xiaomi MiMo",
+  chutes = "chutes",
 }
 
 export const provider_map: Record<string, string> = {
@@ -92,6 +94,8 @@ export const provider_map: Record<string, string> = {
   Infinity: "infinity",
   SAP: "sap",
   Watsonx: "watsonx",
+  xiaomi_mimo: "xiaomi_mimo",
+  chutes: "chutes",
 };
 
 const asset_logos_folder = "../ui/assets/logos/";
@@ -141,6 +145,8 @@ export const providerLogoMap: Record<string, string> = {
   [Providers.VolcEngine]: `${asset_logos_folder}volcengine.png`,
   [Providers.DeepInfra]: `${asset_logos_folder}deepinfra.png`,
   [Providers.SAP]: `${asset_logos_folder}sap.png`,
+  [Providers.xiaomi_mimo]: `${asset_logos_folder}xiaomi_mimo.png`,
+  [Providers.chutes]: `${asset_logos_folder}chutes.png`,
 };
 
 export const getProviderLogoAndName = (providerValue: string): { logo: string; displayName: string } => {
@@ -206,6 +212,10 @@ export const getPlaceholder = (selectedProvider: string): string => {
     return "runwayml/gen4_turbo";
   } else if (selectedProvider === Providers.Watsonx) {
     return "watsonx/ibm/granite-3-3-8b-instruct";
+  } else if (selectedProvider === Providers.xiaomi_mimo) {
+    return "xiaomi_mimo/mimo-v2-flash";
+  } else if (selectedProvider === Providers.chutes) {
+    return "chutes/MiniMaxAI/MiniMax-M2.1-TEE";
   } else {
     return "gpt-3.5-turbo";
   }
@@ -213,9 +223,17 @@ export const getPlaceholder = (selectedProvider: string): string => {
 
 export const getProviderModels = (provider: Providers, modelMap: any): Array<string> => {
   let providerKey = provider;
-  console.log(`Provider key: ${providerKey}`);
+
+  // Handle case-insensitive provider lookup
   let custom_llm_provider = provider_map[providerKey];
-  console.log(`Provider mapped to: ${custom_llm_provider}`);
+  if (!custom_llm_provider) {
+    // Try to find case-insensitive match in provider_map keys
+    const lowercaseKey = providerKey.toString().toLowerCase();
+    const matchedKey = Object.keys(provider_map).find(k => k.toLowerCase() === lowercaseKey);
+    if (matchedKey) {
+      custom_llm_provider = provider_map[matchedKey];
+    }
+  }
 
   let providerModels: Array<string> = [];
 

@@ -16,13 +16,18 @@ nvm use v20
 # Check if nvm use was successful
 if [ $? -ne 0 ]; then
   echo "Error: Failed to switch to Node.js v20. Deployment aborted."
-  exit 1
+  if [! command -v npm &> /dev/null]; then
+    echo "npm is not installed. Please check your nvm installation."
+    exit 1
+  fi
 fi
 
 # print contents of ui_colors.json
 echo "Contents of ui_colors.json:"
 cat ui_colors.json
 
+# Install npm dependencies with legacy peer deps
+npm install --legacy-peer-deps
 # Run npm build
 npm run build
 

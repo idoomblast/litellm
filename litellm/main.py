@@ -2326,6 +2326,78 @@ def completion(  # type: ignore # noqa: PLR0915
             logging.post_call(
                 input=messages, api_key=api_key, original_response=response
             )
+        elif custom_llm_provider == "xiaomi_mimo":
+            api_key = (
+                api_key
+                or get_secret_str("XIAOMI_MIMO_API_KEY")
+                or litellm.api_key
+            )
+
+            api_base = (
+                api_base
+                or litellm.api_base
+                or get_secret_str("XIAOMI_MIMO_API_BASE")
+                or "https://api.xiaomimimo.com/v1"
+            )
+
+            response = base_llm_http_handler.completion(
+                model=model,
+                messages=messages,
+                api_base=api_base,
+                custom_llm_provider=custom_llm_provider,
+                model_response=model_response,
+                encoding=_get_encoding(),
+                logging_obj=logging,
+                optional_params=optional_params,
+                timeout=timeout,
+                litellm_params=litellm_params,
+                shared_session=shared_session,
+                acompletion=acompletion,
+                stream=stream,
+                api_key=api_key,
+                headers=headers,
+                client=client,
+                provider_config=provider_config,
+            )
+            logging.post_call(
+                input=messages, api_key=api_key, original_response=response
+            )
+        elif custom_llm_provider == "chutes":
+            api_key = (
+                api_key
+                or get_secret_str("CHUTES_API_KEY")
+                or litellm.api_key
+            )
+
+            api_base = (
+                api_base
+                or litellm.api_base
+                or get_secret_str("CHUTES_API_BASE")
+                or "https://llm.chutes.ai/v1"
+            )
+
+            response = base_llm_http_handler.completion(
+                model=model,
+                messages=messages,
+                api_base=api_base,
+                custom_llm_provider=custom_llm_provider,
+                model_response=model_response,
+                encoding=_get_encoding(),
+                logging_obj=logging,
+                optional_params=optional_params,
+                timeout=timeout,
+                litellm_params=litellm_params,
+                shared_session=shared_session,
+                acompletion=acompletion,
+                stream=stream,
+                api_key=api_key,
+                headers=headers,
+                client=client,
+                provider_config=provider_config,
+            )
+            logging.post_call(
+                input=messages, api_key=api_key, original_response=response
+            )
         elif (
             model in litellm.open_ai_chat_completion_models
             or custom_llm_provider == "custom_openai"

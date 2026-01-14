@@ -7549,11 +7549,6 @@ class ProviderConfigManager:
                 VertexAIGPTOSSTransformation,
             )
             return VertexAIGPTOSSTransformation()
-        elif "zai-org/glm" in model:
-            from litellm.llms.vertex_ai.vertex_ai_partner_models.zai.transformation import (
-                ZAIChatConfig,
-            )
-            return ZAIChatConfig()
         elif model in litellm.vertex_mistral_models:
             if "codestral" in model:
                 return litellm.CodestralTextCompletionConfig()

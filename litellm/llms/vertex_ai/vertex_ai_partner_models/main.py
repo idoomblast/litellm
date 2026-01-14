@@ -12,6 +12,7 @@ from litellm.utils import ModelResponse
 
 from ...custom_httpx.llm_http_handler import BaseLLMHTTPHandler
 from ..vertex_llm_base import VertexBase
+from .minimax.transformation import VertexAIMiniMaxConfig
 
 base_llm_http_handler = BaseLLMHTTPHandler()
 
@@ -227,6 +228,11 @@ class VertexAIPartnerModels(VertexBase):
                     custom_llm_provider=LlmProviders.VERTEX_AI.value,
                 )
             elif self.should_use_openai_handler(model):
+                # Check if this is a MiniMax model that needs XML parsing
+                provider_config = None
+                if VertexAIMiniMaxConfig.is_minimax_model(model):
+                    provider_config = VertexAIMiniMaxConfig()
+                
                 return base_llm_http_handler.completion(
                     model=model,
                     stream=stream,
@@ -241,8 +247,9 @@ class VertexAIPartnerModels(VertexBase):
                     headers=headers,
                     encoding=encoding,
                     api_key=access_token,
-                    logging_obj=logging_obj,  # model call logging done inside the class as we make need to modify I/O to fit aleph alpha's requirements
+                    logging_obj=logging_obj,
                     client=client,
+                    provider_config=provider_config,
                 )
             return openai_like_chat_completions.completion(
                 model=model,

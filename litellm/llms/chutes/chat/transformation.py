@@ -2,12 +2,23 @@
 Translates from OpenAI's `/v1/chat/completions` to Chutes's `/v1/chat/completions`
 """
 
-from typing import Any, Coroutine, Dict, List, Literal, Optional, Tuple, Union, overload
+from typing import TYPE_CHECKING, Any, Coroutine, Dict, List, Literal, Optional, Tuple, Union, overload
+
+import httpx
 
 from litellm.secret_managers.main import get_secret_str
 from litellm.types.llms.openai import AllMessageValues
 
 from ...openai.chat.gpt_transformation import OpenAIGPTConfig
+
+if TYPE_CHECKING:
+    from litellm.litellm_core_utils.litellm_logging import Logging as _LiteLLMLoggingObj
+    from litellm.types.utils import ModelResponse
+
+    LiteLLMLoggingObj = _LiteLLMLoggingObj
+else:
+    LiteLLMLoggingObj = Any
+    ModelResponse = Any
 
 
 class ChutesChatConfig(OpenAIGPTConfig):
@@ -128,3 +139,56 @@ class ChutesChatConfig(OpenAIGPTConfig):
         api_base = api_base or get_secret_str("CHUTES_API_BASE") or "https://llm.chutes.ai/v1"
         dynamic_api_key = api_key or get_secret_str("CHUTES_API_KEY") or ""
         return api_base, dynamic_api_key
+
+    def transform_response(
+        self,
+        model: str,
+        raw_response: httpx.Response,
+        model_response: ModelResponse,
+        logging_obj: LiteLLMLoggingObj,
+        request_data: dict,
+        messages: List[AllMessageValues],
+        optional_params: dict,
+        litellm_params: dict,
+        encoding: Any,
+        api_key: Optional[str] = None,
+        json_mode: Optional[bool] = None,
+    ) -> ModelResponse:
+        """
+        Transform the response from Chutes API.
+        
+        Routes to MiniMaxM2Config for MiniMax M2.1 models.
+        """
+        # Lazy import to avoid circular dependency
+        from .minimax_m2_transformation import MiniMaxM2Config
+        
+        # Route to MiniMax M2.1 config if it's a MiniMax model
+        if MiniMaxM2Config.is_minimax_m2_model(model):
+            return MiniMaxM2Config().transform_response(
+                model=model,
+                raw_response=raw_response,
+                model_response=model_response,
+                logging_obj=logging_obj,
+                request_data=request_data,
+                messages=messages,
+                optional_params=optional_params,
+                litellm_params=litellm_params,
+                encoding=encoding,
+                api_key=api_key,
+                json_mode=json_mode,
+            )
+        
+        # Otherwise, use standard OpenAI transformation
+        return super().transform_response(
+            model=model,
+            raw_response=raw_response,
+            model_response=model_response,
+            logging_obj=logging_obj,
+            request_data=request_data,
+            messages=messages,
+            optional_params=optional_params,
+            litellm_params=litellm_params,
+            encoding=encoding,
+            api_key=api_key,
+            json_mode=json_mode,
+        )

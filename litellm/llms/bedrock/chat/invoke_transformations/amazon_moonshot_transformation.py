@@ -19,6 +19,7 @@ from litellm.llms.bedrock.common_utils import BedrockError
 from litellm.llms.moonshot.chat.transformation import MoonshotChatConfig
 from litellm.types.llms.openai import AllMessageValues
 from litellm.types.utils import Choices
+from litellm import verbose_logger
 
 if TYPE_CHECKING:
     from litellm.litellm_core_utils.litellm_logging import Logging as _LiteLLMLoggingObj
@@ -209,12 +210,16 @@ class AmazonMoonshotConfig(AmazonInvokeConfig, MoonshotChatConfig):
     ) -> "ModelResponse":
         """
         Transform the response from Bedrock Moonshot AI models.
-        
-        Moonshot AI uses OpenAI-compatible response format, but returns reasoning
-        content in <reasoning> tags. This method:
+
+        Moonshot AI uses OpenAI-compatible response format, but:
+        1. Returns reasoning content in <reasoning> tags (old format)
+        2. Returns tool calls in special token format (Kimi-K2 native format)
+
+        This method:
         1. Calls parent class transformation
         2. Extracts reasoning content from <reasoning> tags
-        3. Sets reasoning_content on the message object
+        3. Parses Kimi-K2 native tool call format if present
+        4. Sets reasoning_content on the message object
         """
         # First, get the standard transformation
         model_response = MoonshotChatConfig.transform_response(
@@ -231,23 +236,130 @@ class AmazonMoonshotConfig(AmazonInvokeConfig, MoonshotChatConfig):
             api_key=api_key,
             json_mode=json_mode,
         )
-        
-        # Extract reasoning content from <reasoning> tags
+
+        # Check if this is a Kimi-K2 model and has native tool calls
+        clean_model_id = self._get_model_id(model).lower()
+        is_kimi_k2 = "kimi-k2" in clean_model_id or "kimik2" in clean_model_id
+
         if model_response.choices and len(model_response.choices) > 0:
             for choice in model_response.choices:
                 # Only process Choices (not StreamingChoices) which have message attribute
-                if isinstance(choice, Choices) and choice.message and choice.message.content:
-                    reasoning_content, main_content = self._extract_reasoning_from_content(
-                        choice.message.content
-                    )
-                    
-                    if reasoning_content:
-                        # Set the reasoning_content field
-                        choice.message.reasoning_content = reasoning_content
-                        # Update the main content without reasoning tags
-                        choice.message.content = main_content
-        
+                if isinstance(choice, Choices) and choice.message:
+                    # Handle <reasoning> tags for Kimi-K2 (new format)
+                    if choice.message.content:
+                        # First, try Kimi-K2 special token reasoning
+                        reasoning_content, main_content = self._extract_kimi_k2_tool_calls(
+                            choice.message.content, choice
+                        )
+
+                        if reasoning_content:
+                            choice.message.reasoning_content = reasoning_content
+                            choice.message.content = main_content
+                        else:
+                            # Fall back to <reasoning> tags (old format)
+                            reasoning_content, main_content = self._extract_reasoning_from_content(
+                                choice.message.content
+                            )
+
+                            if reasoning_content:
+                                choice.message.reasoning_content = reasoning_content
+                                choice.message.content = main_content
+
+                    # Handle tool calls in reasoning_content field
+                    if is_kimi_k2 and choice.message.reasoning_content:
+                        self._parse_kimi_k2_tool_calls_from_reasoning(
+                            choice.message, raw_response.request_data if hasattr(raw_response, "request_data") else {}
+                        )
+
         return model_response
+
+    def _extract_kimi_k2_tool_calls(self, content: str, choice: Choices) -> tuple[Optional[str], str]:
+        """
+        Extract Kimi-K2 tool calls from special token format.
+
+        Kimi-K2 uses special tokens for tool calls:
+        <|tool_calls_section_begin|>...<|tool_calls_section_end|>
+
+        Also extracts reasoning content that comes before the tool calls.
+
+        Args:
+            content: The full content string from the API response
+            choice: The choice object to update with tool calls
+
+        Returns:
+            tuple: (reasoning_content, main_content)
+        """
+        if not content:
+            return None, content
+
+        # Check if content contains Kimi-K2 tool call markers
+        if "<|tool_calls_section_begin|>" not in content:
+            return None, content
+
+        try:
+            # Import here to avoid circular dependency
+            from ...chutes.chat.kimi_k2_parser import KimiK2ToolParser
+
+            parser = KimiK2ToolParser()
+
+            # Extract tool calls
+            tool_calls = parser.extract_tool_calls(content)
+
+            # Normalize function names in tool calls
+            if tool_calls:
+                tool_calls = parser.normalize_tool_calls(tool_calls)
+                # Update choice with parsed tool calls
+                choice.message["tool_calls"] = tool_calls
+                choice.finish_reason = "tool_calls"
+
+            # Extract reasoning and main content
+            reasoning, main = parser.extract_reasoning_content(content)
+
+            return reasoning, main if main else content
+
+        except Exception as e:
+            verbose_logger.debug(f"Error extracting Kimi-K2 tool calls: {e}")
+            return None, content
+
+    def _parse_kimi_k2_tool_calls_from_reasoning(
+        self, message: Any, request_data: dict
+    ) -> None:
+        """
+        Parse tool calls from reasoning_content field.
+
+        Kimi-K2 may return tool calls in the reasoning_content field using
+        special token format.
+
+        Args:
+            message: The message object
+            request_data: The request data for parameter validation
+        """
+        if not message.reasoning_content:
+            return
+
+        try:
+            from ...chutes.chat.kimi_k2_parser import KimiK2ToolParser
+
+            parser = KimiK2ToolParser()
+
+            tool_calls = parser.extract_tool_calls(message.reasoning_content)
+
+            # Normalize function names in tool calls
+            if tool_calls:
+                tool_calls = parser.normalize_tool_calls(tool_calls)
+                # Set tool calls on message
+                message["tool_calls"] = tool_calls
+
+                # Extract reasoning and clean up
+                reasoning, main_content = parser.extract_reasoning_content(message.reasoning_content)
+                message.reasoning_content = reasoning
+
+                # If there's main content after parsing, update content
+                if main_content and (not message.content or message.content.isspace()):
+                    message.content = main_content
+
+        except Exception as e:
+            verbose_logger.debug(f"Error parsing Kimi-K2 tool calls from reasoning_content: {e}")
 
     def get_error_class(
         self, error_message: str, status_code: int, headers: Union[dict, httpx.Headers]

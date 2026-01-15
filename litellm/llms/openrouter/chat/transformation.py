@@ -188,6 +188,7 @@ class OpenrouterConfig(OpenAIGPTConfig):
         Transform the response from OpenRouter API.
 
         Extracts cost information from response headers if available.
+        Parses Kimi-K2 native tool call format if present.
 
         Returns:
             ModelResponse: The transformed response with cost information.
@@ -224,7 +225,102 @@ class OpenrouterConfig(OpenAIGPTConfig):
             # If we can't extract cost, continue without it - don't fail the response
             pass
 
+        # Parse Kimi-K2 native tool calls if present
+        # Also normalize function names for Kimi-K2 models
+        if self._is_kimi_k2_model(model):
+            try:
+                # Import here to avoid circular dependency
+                from ...chutes.chat.kimi_k2_parser import KimiK2ToolParser
+
+                if hasattr(model_response, "choices") and model_response.choices:
+                    for choice in model_response.choices:
+                        if hasattr(choice, "message") and choice.message:
+                            # Normalize function names in existing tool_calls
+                            if "tool_calls" in choice.message and choice.message["tool_calls"]:
+                                choice.message["tool_calls"] = KimiK2ToolParser.normalize_tool_calls(
+                                    choice.message["tool_calls"]
+                                )
+
+                            # Check reasoning_content
+                            reasoning_content = choice.message.get("reasoning_content", "")
+                            if reasoning_content and "<|tool_calls_section_begin|>" in reasoning_content:
+                                verbose_logger.debug("Detected Kimi-K2 native tool calls in reasoning_content, parsing...")
+                                self._parse_kimi_k2_tool_calls(choice.message, reasoning_content)
+                                # Normalize function names after parsing native format
+                                if "tool_calls" in choice.message and choice.message["tool_calls"]:
+                                    choice.message["tool_calls"] = KimiK2ToolParser.normalize_tool_calls(
+                                        choice.message["tool_calls"]
+                                    )
+                            else:
+                                # Check content
+                                content = choice.message.get("content", "")
+                                if content and "<|tool_calls_section_begin|>" in content:
+                                    verbose_logger.debug("Detected Kimi-K2 native tool calls in content, parsing...")
+                                    self._parse_kimi_k2_tool_calls(choice.message, content)
+                                    # Normalize function names after parsing native format
+                                    if "tool_calls" in choice.message and choice.message["tool_calls"]:
+                                        choice.message["tool_calls"] = KimiK2ToolParser.normalize_tool_calls(
+                                            choice.message["tool_calls"]
+                                        )
+            except Exception as e:
+                verbose_logger.debug(f"Error parsing Kimi-K2 native format: {e}")
+
         return model_response
+
+    def _is_kimi_k2_model(self, model: str) -> bool:
+        """
+        Check if the model is a Kimi-K2 model.
+
+        Args:
+            model: Model name
+
+        Returns:
+            True if this is a Kimi-K2 model
+        """
+        model_lower = model.lower()
+        return "kimi-k2" in model_lower or "kimik2" in model_lower
+
+    def _parse_kimi_k2_tool_calls(self, message: Any, content: str) -> None:
+        """
+        Parse Kimi-K2 native tool calls from content.
+
+        Kimi-K2 uses special tokens for tool calls:
+        <|tool_calls_section_begin|>
+        <|tool_call_begin|> function_name
+        <|tool_call_argument_begin|> {...}
+        <|tool_call_end|>
+        <|tool_calls_section_end|>
+
+        Args:
+            message: The message object to update
+            content: Content string containing tool calls
+        """
+        try:
+            # Import here to avoid circular dependency
+            from ...chutes.chat.kimi_k2_parser import KimiK2ToolParser
+
+            parser = KimiK2ToolParser()
+
+            # Extract tool calls
+            tool_calls = parser.extract_tool_calls(content)
+
+            if tool_calls:
+                message["tool_calls"] = tool_calls
+
+                # Extract reasoning and main content
+                reasoning, main_content = parser.extract_reasoning_content(content)
+
+                if reasoning:
+                    message["reasoning_content"] = reasoning
+
+                # Update content based on where tool calls were found
+                if content == message.get("reasoning_content"):
+                    message["reasoning_content"] = reasoning
+                elif content == message.get("content"):
+                    message["content"] = main_content
+
+        except Exception as e:
+            verbose_logger.error(f"Error parsing Kimi-K2 tool calls: {e}")
 
     def get_error_class(
         self, error_message: str, status_code: int, headers: Union[dict, httpx.Headers]
@@ -249,6 +345,26 @@ class OpenrouterConfig(OpenAIGPTConfig):
 
 
 class OpenRouterChatCompletionStreamingHandler(BaseModelResponseIterator):
+    """
+    Streaming handler for OpenRouter chat completions.
+
+    Handles error chunks, transforms reasoning to reasoning_content,
+    and parses Kimi-K2 native special token format for tool calls.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._model: Optional[str] = None
+        self._should_parse_kimi_tool_calls = False
+        self._buffer = ""
+        self._tool_calls_sent = False
+
+    @classmethod
+    def _is_kimi_k2_model(cls, model: str) -> bool:
+        """Check if the model is a Kimi-K2 model."""
+        model_lower = model.lower()
+        return "kimi-k2" in model_lower or "kimi_k2" in model_lower or "kimik2" in model_lower
+
     def chunk_parser(self, chunk: dict) -> ModelResponseStream:
         try:
             ## HANDLE ERROR IN CHUNK ##
@@ -269,9 +385,25 @@ class OpenRouterChatCompletionStreamingHandler(BaseModelResponseIterator):
                     headers=error_message["metadata"].get("headers", {}),
                 )
 
+            # Detect model from first chunk for Kimi-K2 handling
+            if self._model is None:
+                self._model = chunk.get("model", "")
+                self._should_parse_kimi_tool_calls = self._is_kimi_k2_model(self._model)
+
             new_choices = []
             for choice in chunk["choices"]:
-                choice["delta"]["reasoning_content"] = choice["delta"].get("reasoning")
+                delta = choice["delta"]
+                # Handle reasoning to reasoning_content transformation
+                if "reasoning" in delta and delta["reasoning"]:
+                    delta["reasoning_content"] = delta["reasoning"]
+
+                # Process Kimi-K2 native special tokens if applicable
+                if self._should_parse_kimi_tool_calls:
+                    result = self._process_kimi_k2_chunk(delta, choice)
+                    if result is not None:
+                        # Delta was modified, use the processed version
+                        pass
+
                 new_choices.append(choice)
             return ModelResponseStream(
                 id=chunk["id"],
@@ -289,3 +421,75 @@ class OpenRouterChatCompletionStreamingHandler(BaseModelResponseIterator):
             )
         except Exception as e:
             raise e
+
+    def _process_kimi_k2_chunk(self, delta: dict, choice: dict) -> Optional[bool]:
+        """
+        Process a delta chunk for Kimi-K2 native special tokens.
+
+        Returns True if the chunk was processed (content may be modified).
+        """
+        # Handle openai-style tool_calls first (already parsed)
+        if "tool_calls" in delta and delta["tool_calls"]:
+            return True
+
+        # Process native special tokens
+        from ...chutes.chat.kimi_k2_parser import KimiK2ToolParser
+
+        text_content = delta.get("content", "")
+        reasoning_content = delta.get("reasoning_content", "")
+
+        # Check for native special tokens
+        has_tool_markers = (
+            "<|tool_calls_section_begin|>" in text_content or
+            "<|tool_calls_section_begin|>" in reasoning_content
+        )
+
+        if not has_tool_markers:
+            # No special tokens, process as normal
+            return False
+
+        # Determine which content to process
+        content_to_parse = reasoning_content if reasoning_content and "<|tool_calls_section_begin|>" in reasoning_content else (
+            text_content if text_content and "<|tool_calls_section_begin|>" in text_content else ""
+        )
+
+        if not content_to_parse:
+            return False
+
+        # Accumulate buffer for special token detection
+        self._buffer += content_to_parse
+
+        # Check if we have a complete tool calls section
+        if "<|tool_calls_section_end|>" in self._buffer:
+            # We have a complete tool calls section
+            tool_calls = self._parse_complete_kimi_tool_calls()
+            if tool_calls and not self._tool_calls_sent:
+                # Set tool_calls on delta
+                delta["tool_calls"] = tool_calls
+                # Clear the content that contained the special tokens
+                if "reasoning_content" in delta and "<|tool_calls_section_begin|>" in reasoning_content:
+                    parsed_reasoning, main_content = KimiK2ToolParser().extract_reasoning_content(content_to_parse)
+                    delta["reasoning_content"] = parsed_reasoning or ""
+                    if main_content:
+                        delta["content"] = main_content
+                elif "<|tool_calls_section_begin|>" in text_content:
+                    cleaned = KimiK2ToolParser().clean_tool_calls_from_content(content_to_parse)
+                    delta["content"] = cleaned or ""
+                self._tool_calls_sent = True
+
+        return True
+
+    def _parse_complete_kimi_tool_calls(self) -> List[dict]:
+        """Parse complete tool calls from accumulated buffer."""
+        from ...chutes.chat.kimi_k2_parser import KimiK2ToolParser
+
+        parser = KimiK2ToolParser()
+        tool_calls = parser.extract_tool_calls(self._buffer)
+
+        # Update buffer to only keep content after tool calls
+        end_pos = self._buffer.find("<|tool_calls_section_end|>")
+        if end_pos != -1:
+            remaining = self._buffer[end_pos + len("<|tool_calls_section_end|>"):].strip()
+            self._buffer = remaining
+
+        return tool_calls

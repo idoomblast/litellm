@@ -13,12 +13,13 @@ from ...openai.chat.gpt_transformation import OpenAIGPTConfig
 
 if TYPE_CHECKING:
     from litellm.litellm_core_utils.litellm_logging import Logging as _LiteLLMLoggingObj
-    from litellm.types.utils import ModelResponse
+    from litellm.types.utils import ModelResponse, ModelResponseStream
 
     LiteLLMLoggingObj = _LiteLLMLoggingObj
 else:
     LiteLLMLoggingObj = Any
     ModelResponse = Any
+    ModelResponseStream = Any
 
 
 class ChutesChatConfig(OpenAIGPTConfig):
@@ -156,12 +157,14 @@ class ChutesChatConfig(OpenAIGPTConfig):
     ) -> ModelResponse:
         """
         Transform the response from Chutes API.
-        
+
         Routes to MiniMaxM2Config for MiniMax M2.1 models.
+        Parses Kimi-K2 native tool call format if present.
         """
         # Lazy import to avoid circular dependency
         from .minimax_m2_transformation import MiniMaxM2Config
-        
+        from .kimi_k2_parser import KimiK2ToolParser
+
         # Route to MiniMax M2.1 config if it's a MiniMax model
         if MiniMaxM2Config.is_minimax_m2_model(model):
             return MiniMaxM2Config().transform_response(
@@ -177,9 +180,10 @@ class ChutesChatConfig(OpenAIGPTConfig):
                 api_key=api_key,
                 json_mode=json_mode,
             )
-        
-        # Otherwise, use standard OpenAI transformation
-        return super().transform_response(
+
+        # Get standard OpenAI transformation first
+        response = OpenAIGPTConfig.transform_response(
+            self,
             model=model,
             raw_response=raw_response,
             model_response=model_response,
@@ -190,5 +194,140 @@ class ChutesChatConfig(OpenAIGPTConfig):
             litellm_params=litellm_params,
             encoding=encoding,
             api_key=api_key,
+            json_mode=json_mode,
+        )
+
+        # Normalize Kimi-K2 function names and parse native format
+        if KimiK2ToolParser.is_kimi_k2_model(model):
+            try:
+                # Normalize function names in existing tool_calls
+                if hasattr(response, "choices") and response.choices:
+                    for choice in response.choices:
+                        if hasattr(choice, "message") and choice.message:
+                            message = choice.message
+                            if "tool_calls" in message and message["tool_calls"]:
+                                message["tool_calls"] = KimiK2ToolParser.normalize_tool_calls(
+                                    message["tool_calls"]
+                                )
+
+                # Check for native tool call format
+                raw_response_json = raw_response.json()
+                if KimiK2ToolParser.has_native_tool_calls(raw_response_json):
+                    verbose_logger.debug("Detected Kimi-K2 native tool call format, parsing...")
+                    response = self._parse_kimi_k2_tool_calls(response, raw_response_json, request_data)
+
+                    # Normalize function names after parsing native format as well
+                    if hasattr(response, "choices") and response.choices:
+                        for choice in response.choices:
+                            if hasattr(choice, "message") and choice.message:
+                                message = choice.message
+                                if "tool_calls" in message and message["tool_calls"]:
+                                    message["tool_calls"] = KimiK2ToolParser.normalize_tool_calls(
+                                        message["tool_calls"]
+                                    )
+
+            except Exception as e:
+                verbose_logger.debug(f"Error checking/parsing Kimi-K2 format: {e}")
+
+        return response
+
+    def _parse_kimi_k2_tool_calls(
+        self,
+        model_response: ModelResponse,
+        raw_response: dict,
+        request_data: dict,
+    ) -> ModelResponse:
+        """
+        Parse Kimi-K2 native tool calls and convert to OpenAI format.
+
+        Kimi-K2 uses special tokens for tool calls in reasoning_content or content:
+
+        <|tool_calls_section_begin|>
+        <|tool_call_begin|> function_name
+        <|tool_call_argument_begin|> {...}
+        <|tool_call_end|>
+        <|tool_calls_section_end|>
+        """
+        from .kimi_k2_parser import KimiK2ToolParser
+
+        try:
+            parser = KimiK2ToolParser()
+
+            # Parse each choice in response
+            if hasattr(model_response, "choices") and model_response.choices:
+                for choice in model_response.choices:
+                    if hasattr(choice, "message") and choice.message:
+                        message = choice.message
+
+                        # Parse tool calls from reasoning_content first
+                        tool_calls = []
+                        reasoning_content = message.get("reasoning_content", "")
+                        if reasoning_content:
+                            tool_calls.extend(parser.extract_tool_calls(reasoning_content))
+
+                        # Also check content field
+                        content = message.get("content", "")
+                        if content and not tool_calls:
+                            tool_calls.extend(parser.extract_tool_calls(content))
+
+                        # If tool calls found, update message
+                        if tool_calls:
+                            message["tool_calls"] = tool_calls
+
+                            # Extract reasoning and main content properly
+                            if reasoning_content:
+                                parsed_reasoning, main_content = parser.extract_reasoning_content(reasoning_content)
+                                message["reasoning_content"] = parsed_reasoning
+                                if main_content:
+                                    message["content"] = main_content
+                                else:
+                                    # Clear content if no main content, only tool calls
+                                    message["content"] = None
+                            elif content:
+                                # Tool calls were in content, clean it up
+                                cleaned_content = parser.clean_tool_calls_from_content(content)
+                                message["content"] = cleaned_content
+
+                            # Set finish reason to tool_calls when tool calls are present
+                            choice.finish_reason = "tool_calls"
+
+            return model_response
+
+        except Exception as e:
+            verbose_logger.error(f"Error parsing Kimi-K2 tool calls: {e}")
+            return model_response
+
+    def get_model_response_iterator(
+        self,
+        streaming_response: Union[Any, List[ModelResponseStream]],
+        sync_stream: bool,
+        json_mode: Optional[bool] = None,
+    ) -> Any:
+        """
+        Get model response iterator for streaming responses.
+
+        Routes to appropriate streaming handlers based on model detection:
+        - KimiK2StreamingHandler for Kimi-K2 models (native special token format)
+        - MiniMaxM2StreamingHandler for MiniMax M2 models (native XML format)
+        - Default handler for other models
+
+        The streaming router detects the model from the first chunk's "model"
+        field and routes to the appropriate handler.
+
+        Args:
+            streaming_response: The streaming response from the API
+            sync_stream: Whether this is a sync or async stream
+            json_mode: Whether JSON mode is enabled
+
+        Returns:
+            Streaming response iterator
+        """
+        from .chutes_streaming_router import ChutesStreamingRouter
+
+        # Use ChutesStreamingRouter to route to appropriate handler
+        # based on model detection from first chunk
+        return ChutesStreamingRouter(
+            streaming_response=streaming_response,
+            sync_stream=sync_stream,
             json_mode=json_mode,
         )

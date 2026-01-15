@@ -12,6 +12,7 @@ from litellm.utils import ModelResponse
 
 from ...custom_httpx.llm_http_handler import BaseLLMHTTPHandler
 from ..vertex_llm_base import VertexBase
+from .kimi.transformation import VertexAIKimiK2Config
 from .minimax.transformation import VertexAIMiniMaxConfig
 
 base_llm_http_handler = BaseLLMHTTPHandler()
@@ -228,11 +229,13 @@ class VertexAIPartnerModels(VertexBase):
                     custom_llm_provider=LlmProviders.VERTEX_AI.value,
                 )
             elif self.should_use_openai_handler(model):
-                # Check if this is a MiniMax model that needs XML parsing
+                # Check if this is a Kimi-K2 model that needs special token parsing
                 provider_config = None
-                if VertexAIMiniMaxConfig.is_minimax_model(model):
+                if VertexAIKimiK2Config.is_kimi_k2_model(model):
+                    provider_config = VertexAIKimiK2Config()
+                elif VertexAIMiniMaxConfig.is_minimax_model(model):
                     provider_config = VertexAIMiniMaxConfig()
-                
+
                 return base_llm_http_handler.completion(
                     model=model,
                     stream=stream,

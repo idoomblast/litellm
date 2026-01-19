@@ -668,7 +668,8 @@ def add_object_type(schema):
         # If properties is empty, remove it and the type field
         if not properties:
             schema.pop("properties", None)
-            schema.pop("type", None)
+            # schema.pop("type", None)
+            schema["type"] = "object"
             schema.pop("required", None)
         else:
             schema["type"] = "object"

@@ -21,6 +21,8 @@ from ..vertex_llm_base import VertexBase
 from .transformation import (
     separate_cached_messages,
     transform_openai_messages_to_gemini_context_caching,
+    get_context_cache_min_tokens,
+    estimate_message_tokens,
 )
 
 local_cache_obj = Cache(
@@ -321,6 +323,25 @@ class ContextCachingEndpoints(VertexBase):
         if google_cache_name:
             return non_cached_messages, optional_params, google_cache_name
 
+        ## VALIDATE MINIMUM TOKEN COUNT FOR CONTEXT CACHING
+        # Validate that cached content has enough tokens before creating cache
+        # This prevents API errors with unhelpful messages like "Cached content is too small"
+        min_tokens_required = get_context_cache_min_tokens(model)
+        estimated_tokens = estimate_message_tokens(cached_messages)
+        
+        if estimated_tokens < min_tokens_required:
+            raise VertexAIError(
+                status_code=400,
+                message=(
+                    f"Context caching requires a minimum of {min_tokens_required:,} tokens for model '{model}', "
+                    f"but the cached content is estimated to have only {estimated_tokens:,} tokens. "
+                    f"Please either:\n"
+                    f"  1. Increase the size of the cached content to at least {min_tokens_required:,} tokens, or\n"
+                    f"  2. Remove the cache_control parameter from the messages to disable caching for this request.\n"
+                    f"Reference: https://ai.google.dev/gemini-api/docs/caching"
+                )
+            )
+
         ## TRANSFORM REQUEST
         cached_content_request_body = (
             transform_openai_messages_to_gemini_context_caching(
@@ -450,6 +471,25 @@ class ContextCachingEndpoints(VertexBase):
 
         if google_cache_name:
             return non_cached_messages, optional_params, google_cache_name
+
+        ## VALIDATE MINIMUM TOKEN COUNT FOR CONTEXT CACHING
+        # Validate that cached content has enough tokens before creating cache
+        # This prevents API errors with unhelpful messages like "Cached content is too small"
+        min_tokens_required = get_context_cache_min_tokens(model)
+        estimated_tokens = estimate_message_tokens(cached_messages)
+        
+        if estimated_tokens < min_tokens_required:
+            raise VertexAIError(
+                status_code=400,
+                message=(
+                    f"Context caching requires a minimum of {min_tokens_required:,} tokens for model '{model}', "
+                    f"but the cached content is estimated to have only {estimated_tokens:,} tokens. "
+                    f"Please either:\n"
+                    f"  1. Increase the size of the cached content to at least {min_tokens_required:,} tokens, or\n"
+                    f"  2. Remove the cache_control parameter from the messages to disable caching for this request.\n"
+                    f"Reference: https://ai.google.dev/gemini-api/docs/caching"
+                )
+            )
 
         ## TRANSFORM REQUEST
         cached_content_request_body = (

@@ -5,7 +5,7 @@ Why separate file? Make it easy to see how transformation works
 """
 
 import re
-from typing import List, Optional, Tuple, Literal
+from typing import List, Optional, Tuple, Literal, Dict
 
 from litellm.types.llms.openai import AllMessageValues
 from litellm.types.llms.vertex_ai import CachedContentRequestBody
@@ -16,6 +16,122 @@ from ..gemini.transformation import (
     _gemini_convert_messages_with_history,
     _transform_system_message,
 )
+
+
+# Context Caching Minimum Token Requirements
+# Based on: https://ai.google.dev/gemini-api/docs/caching
+# https://cloud.google.com/blog/products/ai-machine-learning/vertex-ai-context-caching
+CONTEXT_CACHE_MIN_TOKENS: Dict[str, int] = {
+    # Gemini 2.5 models - reduced minimums
+    "gemini-2.5-flash": 1024,
+    "gemini-2.5-pro": 2048,
+    "gemini-2.5-flash-lite": 512,
+    # Older models - higher minimums
+    "gemini-1.5-pro": 32768,
+    "gemini-1.5-pro-001": 32768,
+    "gemini-1.5-pro-002": 32768,
+    "gemini-1.5-flash": 32768,
+    "gemini-1.5-flash-001": 32768,
+    "gemini-1.5-flash-002": 32768,
+    "gemini-1.5-flash-8b": 32768,
+}
+
+
+def get_context_cache_min_tokens(model: str) -> int:
+    """
+    Get the minimum token count required for context caching for a given model.
+    
+    Args:
+        model: The model name (e.g., "gemini-2.5-flash", "vertex_ai/gemini-2.5-pro")
+        
+    Returns:
+        int: Minimum number of tokens required for context caching
+        
+    Examples:
+        >>> get_context_cache_min_tokens("gemini-2.5-flash")
+        1024
+        >>> get_context_cache_min_tokens("vertex_ai/gemini-2.5-pro")
+        2048
+    """
+    # Clean up model name - remove provider prefix
+    clean_model = model
+    if "/" in model:
+        clean_model = model.split("/")[-1]
+    
+    # Look up exact match first
+    if clean_model in CONTEXT_CACHE_MIN_TOKENS:
+        return CONTEXT_CACHE_MIN_TOKENS[clean_model]
+    
+    # Try partial match for versioned models (e.g., gemini-2.5-flash-001)
+    for model_pattern, min_tokens in CONTEXT_CACHE_MIN_TOKENS.items():
+        if clean_model.startswith(model_pattern):
+            return min_tokens
+    
+    # Default fallback for unknown models - use safest (highest) minimum
+    return 32768
+
+
+def estimate_message_tokens(messages: List[AllMessageValues]) -> int:
+    """
+    Estimate token count for a list of messages without making an API call.
+    
+    Uses a character-based approximation: roughly 4 characters per token for English text.
+    This is a simple estimation suitable for validation purposes before making actual API calls.
+    
+    Note: This is an approximation. Actual token count may vary slightly.
+    For exact counts, use the provider's countTokens endpoint.
+    
+    Args:
+        messages: List of messages in OpenAI format
+        
+    Returns:
+        int: Estimated token count
+        
+    Examples:
+        >>> estimate_message_tokens([{"role": "user", "content": "Hello world"}])
+        3
+        >>> estimate_message_tokens([{"role": "user", "content": [{"type": "text", "text": "Hello"}]}])
+        1
+    """
+    total_chars = 0
+    
+    for message in messages:
+        content = message.get("content")
+        
+        if content is None:
+            continue
+            
+        # Handle string content
+        if isinstance(content, str):
+            total_chars += len(content)
+        # Handle list content (e.g., with cache_control)
+        elif isinstance(content, list):
+            for content_item in content:
+                if isinstance(content_item, dict):
+                    # Check for text content - only add if text is non-empty
+                    text = content_item.get("text", "")
+                    if text:  # Only count non-empty text
+                        total_chars += len(text)
+                    # Handle image/video content - approximate as more tokens
+                    elif content_item.get("type") == "image_url":
+                        total_chars += 800  # Rough estimate for images
+                    elif content_item.get("type") == "image":
+                        total_chars += 800  # Alternative image type
+                    elif content_item.get("type") in ["video", "audio"]:
+                        total_chars += 2000  # Rough estimate for media
+                    # Handle cache_control in nested content (ignore for token count)
+                    elif content_item.get("cache_control") is not None:
+                        continue
+    
+    # Character-based approximation: roughly 4 characters per token
+    # This works reasonably well for English text
+    estimated_tokens = total_chars / 4.0
+    
+    # Add overhead for message structure (role, formatting, etc.)
+    # Each message has some overhead for metadata
+    estimated_tokens += len(messages) * 4
+    
+    return int(estimated_tokens)
 
 
 def get_first_continuous_block_idx(

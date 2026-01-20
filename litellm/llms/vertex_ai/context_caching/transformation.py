@@ -26,6 +26,11 @@ CONTEXT_CACHE_MIN_TOKENS: Dict[str, int] = {
     "gemini-2.5-flash": 1024,
     "gemini-2.5-pro": 2048,
     "gemini-2.5-flash-lite": 512,
+    # Gemini 3 models
+    "gemini-3-flash-preview": 1024,
+    "gemini-3-flash": 1024,
+    "gemini-3-pro-preview": 4096,
+    "gemini-3-pro": 4096,
     # Older models - higher minimums
     "gemini-1.5-pro": 32768,
     "gemini-1.5-pro-001": 32768,

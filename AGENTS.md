@@ -117,7 +117,7 @@ LiteLLM supports MCP for agent workflows:
 
 ## RUNNING SCRIPTS
 
-Use `poetry run python script.py` to run Python scripts in the project environment (for non-test files).
+**You Must use `poetry run python script.py` to run Python scripts in the project environment (for non-test files)**
 
 ## GITHUB TEMPLATES
 

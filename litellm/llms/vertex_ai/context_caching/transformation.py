@@ -275,6 +275,59 @@ def separate_cached_messages(
     return cached_messages, non_cached_messages
 
 
+def remove_cache_control_from_messages(
+    messages: List[AllMessageValues],
+) -> List[AllMessageValues]:
+    """
+    Remove cache_control parameters from all messages.
+
+    This is used to disable context caching when requested content is too small
+    for model minimum requirements, allowing the request to proceed without caching.
+
+    Args:
+        messages: List of messages with potential cache_control parameters
+
+    Returns:
+        List of messages with cache_control removed from content arrays
+
+    Examples:
+        >>> messages = [{"role": "user", "content": [{"type": "text", "text": "Hello", "cache_control": {"type": "ephemeral"}}]}]
+        >>> cleaned = remove_cache_control_from_messages(messages)
+        >>> "cache_control" not in cleaned[0]["content"][0]
+        True
+    """
+    from typing import cast
+
+    cleaned_messages: List[AllMessageValues] = []
+
+    for message in messages:
+        # Create a copy of the message to avoid mutating the original
+        cleaned_message = dict(message)  # type: ignore
+
+        content = cleaned_message.get("content")
+
+        if content is None:
+            cleaned_messages.append(cast(AllMessageValues, cleaned_message))
+            continue
+
+        # Handle list content (where cache_control is typically found)
+        if isinstance(content, list):
+            cleaned_content = []
+            for content_item in content:
+                if isinstance(content_item, dict):
+                    # Remove cache_control if present
+                    cleaned_item = dict(content_item)
+                    cleaned_item.pop("cache_control", None)
+                    cleaned_content.append(cleaned_item)
+                else:
+                    cleaned_content.append(content_item)
+            cleaned_message["content"] = cleaned_content  # type: ignore
+
+        cleaned_messages.append(cast(AllMessageValues, cleaned_message))
+
+    return cleaned_messages
+
+
 def transform_openai_messages_to_gemini_context_caching(
     model: str,
     messages: List[AllMessageValues],

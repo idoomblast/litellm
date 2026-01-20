@@ -23,6 +23,7 @@ from .transformation import (
     transform_openai_messages_to_gemini_context_caching,
     get_context_cache_min_tokens,
     estimate_message_tokens,
+    remove_cache_control_from_messages,
 )
 
 local_cache_obj = Cache(
@@ -324,23 +325,43 @@ class ContextCachingEndpoints(VertexBase):
             return non_cached_messages, optional_params, google_cache_name
 
         ## VALIDATE MINIMUM TOKEN COUNT FOR CONTEXT CACHING
-        # Validate that cached content has enough tokens before creating cache
-        # This prevents API errors with unhelpful messages like "Cached content is too small"
+        # Validate that cached content has enough tokens before creating cache.
+        # If insufficient, auto-disable caching and proceed without cache_control
         min_tokens_required = get_context_cache_min_tokens(model)
         estimated_tokens = estimate_message_tokens(cached_messages)
         
         if estimated_tokens < min_tokens_required:
-            raise VertexAIError(
-                status_code=400,
-                message=(
-                    f"Context caching requires a minimum of {min_tokens_required:,} tokens for model '{model}', "
-                    f"but the cached content is estimated to have only {estimated_tokens:,} tokens. "
-                    f"Please either:\n"
-                    f"  1. Increase the size of the cached content to at least {min_tokens_required:,} tokens, or\n"
-                    f"  2. Remove the cache_control parameter from the messages to disable caching for this request.\n"
-                    f"Reference: https://ai.google.dev/gemini-api/docs/caching"
-                )
+            # Log warning about auto-disabling caching
+            logging_obj.pre_call(
+                input=messages,
+                api_key="",
+                additional_args={
+                    "event": "context_caching_auto_disabled",
+                    "model": model,
+                    "estimated_tokens": estimated_tokens,
+                    "min_tokens_required": min_tokens_required,
+                    "reason": "Cached content too small for context caching",
+                },
             )
+            
+            # Remove cache_control from all messages and proceed without caching
+            logging_obj.post_call(
+                input=None,
+                api_key="",
+                original_response=None,
+                additional_args={
+                    "event": "context_caching_auto_disabled_warning",
+                    "message": (
+                        f"Context caching auto-disabled for model '{model}': "
+                        f"estimated {estimated_tokens:,} tokens (minimum {min_tokens_required:,} required). "
+                        f"Proceeding without caching."
+                    )
+                },
+            )
+            
+            # Remove cache_control from all messages and return without cache
+            messages_without_cache = remove_cache_control_from_messages(messages)
+            return messages_without_cache, optional_params, None
 
         ## TRANSFORM REQUEST
         cached_content_request_body = (
@@ -473,23 +494,43 @@ class ContextCachingEndpoints(VertexBase):
             return non_cached_messages, optional_params, google_cache_name
 
         ## VALIDATE MINIMUM TOKEN COUNT FOR CONTEXT CACHING
-        # Validate that cached content has enough tokens before creating cache
-        # This prevents API errors with unhelpful messages like "Cached content is too small"
+        # Validate that cached content has enough tokens before creating cache.
+        # If insufficient, auto-disable caching and proceed without cache_control
         min_tokens_required = get_context_cache_min_tokens(model)
         estimated_tokens = estimate_message_tokens(cached_messages)
         
         if estimated_tokens < min_tokens_required:
-            raise VertexAIError(
-                status_code=400,
-                message=(
-                    f"Context caching requires a minimum of {min_tokens_required:,} tokens for model '{model}', "
-                    f"but the cached content is estimated to have only {estimated_tokens:,} tokens. "
-                    f"Please either:\n"
-                    f"  1. Increase the size of the cached content to at least {min_tokens_required:,} tokens, or\n"
-                    f"  2. Remove the cache_control parameter from the messages to disable caching for this request.\n"
-                    f"Reference: https://ai.google.dev/gemini-api/docs/caching"
-                )
+            # Log warning about auto-disabling caching
+            logging_obj.pre_call(
+                input=messages,
+                api_key="",
+                additional_args={
+                    "event": "context_caching_auto_disabled",
+                    "model": model,
+                    "estimated_tokens": estimated_tokens,
+                    "min_tokens_required": min_tokens_required,
+                    "reason": "Cached content too small for context caching",
+                },
             )
+            
+            # Remove cache_control from all messages and proceed without caching
+            logging_obj.post_call(
+                input=None,
+                api_key="",
+                original_response=None,
+                additional_args={
+                    "event": "context_caching_auto_disabled_warning",
+                    "message": (
+                        f"Context caching auto-disabled for model '{model}': "
+                        f"estimated {estimated_tokens:,} tokens (minimum {min_tokens_required:,} required). "
+                        f"Proceeding without caching."
+                    )
+                },
+            )
+            
+            # Remove cache_control from all messages and return without cache
+            messages_without_cache = remove_cache_control_from_messages(messages)
+            return messages_without_cache, optional_params, None
 
         ## TRANSFORM REQUEST
         cached_content_request_body = (

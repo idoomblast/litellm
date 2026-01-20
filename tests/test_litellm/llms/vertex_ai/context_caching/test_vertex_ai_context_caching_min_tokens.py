@@ -75,10 +75,10 @@ class TestContextCachingMinTokens:
         "litellm.llms.vertex_ai.context_caching.vertex_ai_context_caching.local_cache_obj"
     )
     @patch.object(ContextCachingEndpoints, "check_cache")
-    def test_check_and_create_cache_insufficient_tokens_raises_error(
+    def test_check_and_create_cache_insufficient_tokens_auto_disables(
         self, mock_check_cache, mock_cache_obj, mock_separate, custom_llm_provider
     ):
-        """Test that check_and_create_cache raises VertexAIError when cached content has too few tokens"""
+        """Test that check_and_create_cache auto-disables caching when cached content has too few tokens"""
         # Setup
         mock_separate.return_value = (self.short_cached_messages, self.non_cached_messages)
         mock_cache_obj.get_cache_key.return_value = "test_cache_key"
@@ -87,29 +87,32 @@ class TestContextCachingMinTokens:
         test_project = "test_project"
         test_location = "test_location"
 
-        # Execute & Assert - should raise VertexAIError with minimum token message
-        with pytest.raises(VertexAIError) as exc_info:
-            self.context_caching.check_and_create_cache(
-                messages=self.short_cached_messages + self.non_cached_messages,  # type: ignore[arg-type]
-                optional_params={},
-                api_key="test_key",
-                api_base=None,
-                model="gemini-2.5-flash",  # Requires 1024 minimum
-                client=self.mock_client,
-                timeout=30.0,
-                logging_obj=self.mock_logging,
-                custom_llm_provider=custom_llm_provider,
-                vertex_project=test_project,
-                vertex_location=test_location,
-                vertex_auth_header="vertext_test_token",
-            )
+        # Execute - should NOT raise VertexAIError, but auto-disable caching
+        result = self.context_caching.check_and_create_cache(
+            messages=self.short_cached_messages + self.non_cached_messages,  # type: ignore[arg-type]
+            optional_params={},
+            api_key="test_key",
+            api_base=None,
+            model="gemini-2.5-flash",  # Requires 1024 minimum
+            client=self.mock_client,
+            timeout=30.0,
+            logging_obj=self.mock_logging,
+            custom_llm_provider=custom_llm_provider,
+            vertex_project=test_project,
+            vertex_location=test_location,
+            vertex_auth_header="vertext_test_token",
+        )
 
-        # Verify error message contains helpful information
-        error_message = str(exc_info.value)
-        assert "minimum of 1,024 tokens" in error_message
-        assert "gemini-2.5-flash" in error_message
-        assert "Increase the size" in error_message or "Remove the cache_control" in error_message
-        assert exc_info.value.status_code == 400
+        # Verify result contains messages without cache_control
+        messages, returned_params, returned_cache = result
+        assert returned_cache is None  # No cache created
+        
+        # Verify cache_control has been removed from all messages
+        from litellm.llms.vertex_ai.context_caching.transformation import remove_cache_control_from_messages
+        expected_messages = remove_cache_control_from_messages(self.short_cached_messages + self.non_cached_messages)  # type: ignore[arg-type]
+        
+        # Messages should match those with cache_control removed
+        assert messages == expected_messages
 
     @pytest.mark.parametrize(
         "custom_llm_provider", ["gemini", "vertex_ai", "vertex_ai_beta"]
@@ -188,7 +191,7 @@ class TestContextCachingMinTokens:
         "litellm.llms.vertex_ai.context_caching.vertex_ai_context_caching.local_cache_obj"
     )
     @patch.object(ContextCachingEndpoints, "check_cache")
-    def test_gemini_provider_minimum_tokens_validation(
+    def test_gemini_provider_minimum_tokens_auto_disable(
         self,
         mock_check_cache,
         mock_cache_obj,
@@ -197,9 +200,9 @@ class TestContextCachingMinTokens:
         min_tokens,
     ):
         """
-        Test that gemini provider (Google AI Studio) validates minimum tokens
-        correctly using the same validation logic as Vertex AI.
-        This ensures the fix works for both providers since they share the same
+        Test that gemini provider (Google AI Studio) auto-disables caching
+        when cached content has too few tokens.
+        This ensures the auto-disable feature works for both providers since they share the same
         ContextCachingEndpoints implementation.
         """
         # Setup
@@ -207,28 +210,32 @@ class TestContextCachingMinTokens:
         mock_cache_obj.get_cache_key.return_value = "test_cache_key"
         mock_check_cache.return_value = None  # No existing cache
 
-        # Execute & Assert - should raise VertexAIError for insufficient tokens
-        with pytest.raises(VertexAIError) as exc_info:
-            self.context_caching.check_and_create_cache(
-                messages=self.short_cached_messages + self.non_cached_messages,  # type: ignore[arg-type]
-                optional_params={},
-                api_key="test_key",
-                api_base=None,
-                model=gemini_model,
-                client=self.mock_client,
-                timeout=30.0,
-                logging_obj=self.mock_logging,
-                custom_llm_provider="gemini",  # Explicitly use gemini provider
-                vertex_project=None,
-                vertex_location=None,
-                vertex_auth_header=None,
-            )
+        # Execute - should NOT raise VertexAIError, but auto-disable caching
+        result = self.context_caching.check_and_create_cache(
+            messages=self.short_cached_messages + self.non_cached_messages,  # type: ignore[arg-type]
+            optional_params={},
+            api_key="test_key",
+            api_base=None,
+            model=gemini_model,
+            client=self.mock_client,
+            timeout=30.0,
+            logging_obj=self.mock_logging,
+            custom_llm_provider="gemini",  # Explicitly use gemini provider
+            vertex_project=None,
+            vertex_location=None,
+            vertex_auth_header=None,
+        )
 
-        # Verify error message contains correct minimum for each model
-        error_message = str(exc_info.value)
-        expected_min_text = f"{min_tokens:,} tokens"
-        assert expected_min_text in error_message, f"Expected '{expected_min_text}' in error message: {error_message}"
-        assert gemini_model in error_message, f"Expected '{gemini_model}' in error message: {error_message}"
+        # Verify result contains messages without cache_control and no cache created
+        messages, returned_params, returned_cache = result
+        assert returned_cache is None  # No cache created
+        
+        # Verify cache_control has been removed from all messages
+        from litellm.llms.vertex_ai.context_caching.transformation import remove_cache_control_from_messages
+        expected_messages = remove_cache_control_from_messages(self.short_cached_messages + self.non_cached_messages)  # type: ignore[arg-type]
+        
+        # Messages should match those with cache_control removed
+        assert messages == expected_messages
 
 
 class TestContextCacheTransformHelpers:

@@ -1,14 +1,24 @@
 """
 Unit tests for Chutes chat transformation.
 
-Tests the configuration and parameter handling for Chutes models.
+Tests the configuration and parameter handling for Chutes models,
+including Kimi K2 native tool call support.
 """
 
 from typing import List, cast
 
 import pytest
 from litellm.llms.chutes.chat.transformation import ChutesChatConfig
+from litellm.llms.chutes.chat.streaming_handler import ChutesChatCompletionStreamingHandler
+from litellm.llms.chutes.chat.kimi_k2_tool_call_parser import (
+    TOOL_CALLS_SECTION_BEGIN,
+    TOOL_CALLS_SECTION_END,
+    TOOL_CALL_BEGIN,
+    TOOL_CALL_END,
+    TOOL_CALL_ARGUMENT_BEGIN,
+)
 from litellm.types.llms.openai import AllMessageValues
+from litellm.types.utils import ModelResponse, Choices, Message
 
 
 class TestChutesChatConfig:
@@ -235,3 +245,611 @@ class TestChutesChatConfig:
             drop_params=False,
         )
         assert result_false["chat_template_kwargs"]["enable_thinking"] is False
+
+
+class TestChutesChatConfigKimiK2:
+    """Test Kimi K2 native tool call support."""
+
+    def setup_method(self):
+        self.config = ChutesChatConfig()
+
+    def test_is_kimi_k2_model(self):
+        """Test Kimi K2 model detection."""
+        assert self.config._is_kimi_k2_model("moonshotai/Kimi-K2") is True
+        assert self.config._is_kimi_k2_model("chutes/moonshotai/Kimi-K2") is True
+        assert self.config._is_kimi_k2_model("kimi-k2-instruct") is True
+        assert self.config._is_kimi_k2_model("gpt-4") is False
+        assert self.config._is_kimi_k2_model("claude-3") is False
+
+    def test_parse_kimi_k2_tool_calls_from_response(self):
+        """Test parsing Kimi K2 tool calls from response content."""
+        tool_call_content = (
+            f"{TOOL_CALLS_SECTION_BEGIN}\n"
+            f'{TOOL_CALL_BEGIN}functions.get_weather:0{TOOL_CALL_ARGUMENT_BEGIN}'
+            f'{{"city": "Beijing"}}{TOOL_CALL_END}\n'
+            f"{TOOL_CALLS_SECTION_END}"
+        )
+
+        # Create a mock ModelResponse
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content=tool_call_content,
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        # Parse tool calls
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        # Verify tool calls were extracted
+        assert parsed_response.choices[0].message.tool_calls is not None
+        assert len(parsed_response.choices[0].message.tool_calls) == 1
+        assert parsed_response.choices[0].message.tool_calls[0].id == "functions.get_weather:0"
+        assert parsed_response.choices[0].message.tool_calls[0].function.name == "get_weather"
+        assert parsed_response.choices[0].message.tool_calls[0].function.arguments == '{"city": "Beijing"}'
+
+        # Content should be cleaned (empty -> None)
+        assert parsed_response.choices[0].message.content is None
+
+    def test_parse_tool_calls_preserves_mixed_content(self):
+        """Test that text before/after tool calls is preserved."""
+        tool_call_content = (
+            "Here is some analysis.\n"
+            f"{TOOL_CALLS_SECTION_BEGIN}\n"
+            f'{TOOL_CALL_BEGIN}functions.get_weather:0{TOOL_CALL_ARGUMENT_BEGIN}'
+            f'{{"city": "Beijing"}}{TOOL_CALL_END}\n'
+            f"{TOOL_CALLS_SECTION_END}\n"
+            "Let me know if you need more help."
+        )
+
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content=tool_call_content,
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        # Tool calls should be extracted
+        assert parsed_response.choices[0].message.tool_calls is not None
+        assert len(parsed_response.choices[0].message.tool_calls) == 1
+
+        # Surrounding text should be preserved
+        assert "Here is some analysis." in parsed_response.choices[0].message.content
+        assert "Let me know if you need more help." in parsed_response.choices[0].message.content
+
+    def test_parse_tool_calls_from_reasoning_content(self):
+        """Test parsing tool calls from reasoning_content field."""
+        tool_call_content = (
+            f"{TOOL_CALLS_SECTION_BEGIN}\n"
+            f'{TOOL_CALL_BEGIN}functions.analyze:0{TOOL_CALL_ARGUMENT_BEGIN}'
+            f'{{"data": "test"}}{TOOL_CALL_END}\n'
+            f"{TOOL_CALLS_SECTION_END}"
+        )
+
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="Regular response",
+                        reasoning_content=tool_call_content,
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        # Tool calls should be extracted from reasoning_content
+        assert parsed_response.choices[0].message.tool_calls is not None
+        assert len(parsed_response.choices[0].message.tool_calls) == 1
+        assert parsed_response.choices[0].message.tool_calls[0].function.name == "analyze"
+
+        # Regular content should be preserved
+        assert parsed_response.choices[0].message.content == "Regular response"
+        # reasoning_content should be cleaned
+        assert parsed_response.choices[0].message.reasoning_content is None
+
+    def test_no_tool_calls_passes_through(self):
+        """Test that responses without tool calls pass through unchanged."""
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="Just a regular response without tool calls.",
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        # Should remain unchanged
+        assert parsed_response.choices[0].message.content == "Just a regular response without tool calls."
+        assert parsed_response.choices[0].message.tool_calls is None
+
+    def test_existing_tool_calls_not_overwritten(self):
+        """Test that existing tool_calls are not overwritten."""
+        from litellm.types.utils import ChatCompletionMessageToolCall, Function
+
+        existing_tool_call = ChatCompletionMessageToolCall(
+            id="existing-id",
+            type="function",
+            function=Function(name="existing_func", arguments="{}"),
+        )
+
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="Some content",
+                        tool_calls=[existing_tool_call],
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        # Existing tool calls should be preserved
+        assert parsed_response.choices[0].message.tool_calls is not None
+        assert len(parsed_response.choices[0].message.tool_calls) == 1
+        assert parsed_response.choices[0].message.tool_calls[0].id == "existing-id"
+
+    def test_get_model_response_iterator(self):
+        """Test that custom streaming handler is returned."""
+        handler = self.config.get_model_response_iterator(
+            streaming_response=iter([]),
+            sync_stream=True,
+            json_mode=False,
+        )
+
+        assert isinstance(handler, ChutesChatCompletionStreamingHandler)
+
+    def test_skip_native_parsing_when_tool_calls_exist(self):
+        """Test that native token parsing is skipped when tool_calls already exist."""
+        from litellm.types.utils import ChatCompletionMessageToolCall, Function
+
+        existing_tool_call = ChatCompletionMessageToolCall(
+            id="existing-id",
+            type="function",
+            function=Function(name="existing_func", arguments='{"arg": "value"}'),
+        )
+
+        # Content has both tool calls (existing) AND native tokens
+        content_with_native_tokens = (
+            "Some text before. "
+            f"{TOOL_CALLS_SECTION_BEGIN}\n"
+            f'{TOOL_CALL_BEGIN}functions.get_weather:0{TOOL_CALL_ARGUMENT_BEGIN}'
+            f'{{"city": "Beijing"}}{TOOL_CALL_END}\n'
+            f"{TOOL_CALLS_SECTION_END}"
+            " Some text after."
+        )
+
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content=content_with_native_tokens,
+                        tool_calls=[existing_tool_call],
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        # Existing tool calls should be preserved (not overwritten)
+        assert parsed_response.choices[0].message.tool_calls is not None
+        assert len(parsed_response.choices[0].message.tool_calls) == 1
+        assert parsed_response.choices[0].message.tool_calls[0].id == "existing-id"
+
+        # Content should have native tokens stripped
+        content = parsed_response.choices[0].message.content
+        assert content is not None
+        assert "Some text before." in content
+        assert "Some text after." in content
+        assert TOOL_CALLS_SECTION_BEGIN not in content
+        assert TOOL_CALL_BEGIN not in content
+
+    def test_finish_reason_fixed_when_tool_calls_exist(self):
+        """Test that finish_reason is changed to 'tool_calls' when tool_calls exist."""
+        from litellm.types.utils import ChatCompletionMessageToolCall, Function
+
+        existing_tool_call = ChatCompletionMessageToolCall(
+            id="existing-id",
+            type="function",
+            function=Function(name="existing_func", arguments="{}"),
+        )
+
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="Some content",
+                        tool_calls=[existing_tool_call],
+                    ),
+                    finish_reason="stop",  # Wrong - should be tool_calls
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        # finish_reason should be corrected to "tool_calls"
+        assert parsed_response.choices[0].finish_reason == "tool_calls"
+
+    def test_finish_reason_fixed_when_native_tool_calls_parsed(self):
+        """Test that finish_reason is fixed when native tool calls are parsed."""
+        tool_call_content = (
+            f"{TOOL_CALLS_SECTION_BEGIN}\n"
+            f'{TOOL_CALL_BEGIN}functions.get_weather:0{TOOL_CALL_ARGUMENT_BEGIN}'
+            f'{{"city": "Beijing"}}{TOOL_CALL_END}\n'
+            f"{TOOL_CALLS_SECTION_END}"
+        )
+
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content=tool_call_content,
+                    ),
+                    finish_reason="stop",  # Wrong - should be tool_calls
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        # Tool calls should be extracted
+        assert parsed_response.choices[0].message.tool_calls is not None
+        # finish_reason should be corrected to "tool_calls"
+        assert parsed_response.choices[0].finish_reason == "tool_calls"
+
+    def test_think_tags_stripped_from_content(self):
+        """Test that <think>...</think> tags are stripped from content."""
+        content_with_think = (
+            "<think>Let me analyze this request...</think> "
+            f"{TOOL_CALLS_SECTION_BEGIN}\n"
+            f'{TOOL_CALL_BEGIN}functions.get_weather:0{TOOL_CALL_ARGUMENT_BEGIN}'
+            f'{{"city": "Beijing"}}{TOOL_CALL_END}\n'
+            f"{TOOL_CALLS_SECTION_END}"
+        )
+
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content=content_with_think,
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        # Tool calls should be extracted
+        assert parsed_response.choices[0].message.tool_calls is not None
+
+        # Content should be cleaned (either None or empty after stripping)
+        content = parsed_response.choices[0].message.content
+        if content:
+            assert "<think>" not in content
+            assert "</think>" not in content
+
+    def test_think_tags_stripped_when_tool_calls_exist(self):
+        """Test that think tags are stripped even when tool_calls already exist."""
+        from litellm.types.utils import ChatCompletionMessageToolCall, Function
+
+        existing_tool_call = ChatCompletionMessageToolCall(
+            id="existing-id",
+            type="function",
+            function=Function(name="existing_func", arguments="{}"),
+        )
+
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="<think>Some internal reasoning</think> Final answer.",
+                        tool_calls=[existing_tool_call],
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        content = parsed_response.choices[0].message.content
+        assert content is not None
+        assert "<think>" not in content
+        assert "</think>" not in content
+        assert "Final answer." in content
+
+        # Thinking content should be in reasoning_content
+        reasoning = parsed_response.choices[0].message.reasoning_content
+        assert reasoning is not None
+        assert "Some internal reasoning" in reasoning
+
+
+class TestThinkTagToReasoningContent:
+    """Test transformation of <think> tags to reasoning_content in non-streaming."""
+
+    def setup_method(self):
+        self.config = ChutesChatConfig()
+
+    def test_think_content_to_reasoning_content(self):
+        """Test that <think>...</think> content is extracted to reasoning_content."""
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="<think>Let me analyze this</think>Here is my answer",
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        # Reasoning content should have the thinking
+        reasoning = parsed_response.choices[0].message.reasoning_content
+        assert reasoning is not None
+        assert "Let me analyze this" in reasoning
+
+        # Content should have the answer
+        content = parsed_response.choices[0].message.content
+        assert content is not None
+        assert "Here is my answer" in content
+        assert "<think>" not in content
+        assert "</think>" not in content
+
+    def test_unclosed_think_tag_non_streaming(self):
+        """Test that unclosed <think> tag treats all following content as reasoning."""
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="<think>Thinking but never finished closing the tag...",
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        # All content after <think> should be in reasoning_content
+        reasoning = parsed_response.choices[0].message.reasoning_content
+        assert reasoning is not None
+        assert "Thinking but never finished closing the tag..." in reasoning
+
+        # Content should be None (nothing before the think tag)
+        content = parsed_response.choices[0].message.content
+        assert content is None
+
+    def test_mixed_content_with_think_tags(self):
+        """Test content before, inside, and after think tags."""
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="Hello <think>internal thought</think> world!",
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        # Content should have text before and after
+        content = parsed_response.choices[0].message.content
+        assert content is not None
+        assert "Hello" in content
+        assert "world!" in content
+        assert "<think>" not in content
+
+        # Reasoning should have the thinking
+        reasoning = parsed_response.choices[0].message.reasoning_content
+        assert reasoning is not None
+        assert "internal thought" in reasoning
+
+    def test_multiple_think_blocks(self):
+        """Test multiple <think>...</think> blocks are all extracted."""
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="<think>first</think>middle<think>second</think>end",
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        # Content should have middle and end
+        content = parsed_response.choices[0].message.content
+        assert content is not None
+        assert "middle" in content
+        assert "end" in content
+
+        # Reasoning should have both thoughts
+        reasoning = parsed_response.choices[0].message.reasoning_content
+        assert reasoning is not None
+        assert "first" in reasoning
+        assert "second" in reasoning
+
+    def test_empty_think_block(self):
+        """Test empty <think></think> block is handled."""
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="<think></think>answer",
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        # Content should have the answer
+        content = parsed_response.choices[0].message.content
+        assert content is not None
+        assert "answer" in content
+
+        # Reasoning should be None (empty think block)
+        reasoning = getattr(parsed_response.choices[0].message, "reasoning_content", None)
+        assert reasoning is None
+
+    def test_append_to_existing_reasoning_content(self):
+        """Test that think content is appended to existing reasoning_content."""
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="<think>new thought</think>answer",
+                        reasoning_content="existing reasoning",
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        # Reasoning should have both existing and new
+        reasoning = parsed_response.choices[0].message.reasoning_content
+        assert reasoning is not None
+        assert "existing reasoning" in reasoning
+        assert "new thought" in reasoning
+
+        # Content should have the answer
+        content = parsed_response.choices[0].message.content
+        assert content is not None
+        assert "answer" in content
+
+    def test_think_tags_with_tool_calls(self):
+        """Test think tags with tool calls (think content extracted, then tool calls parsed)."""
+        tool_call_content = (
+            "<think>Let me call a function</think>"
+            f"{TOOL_CALLS_SECTION_BEGIN}\n"
+            f'{TOOL_CALL_BEGIN}functions.get_weather:0{TOOL_CALL_ARGUMENT_BEGIN}'
+            f'{{"city": "Beijing"}}{TOOL_CALL_END}\n'
+            f"{TOOL_CALLS_SECTION_END}"
+        )
+
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content=tool_call_content,
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed_response = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        # Tool calls should be extracted
+        assert parsed_response.choices[0].message.tool_calls is not None
+        assert len(parsed_response.choices[0].message.tool_calls) == 1
+        assert parsed_response.choices[0].message.tool_calls[0].function.name == "get_weather"
+
+        # Reasoning should have the thinking
+        reasoning = parsed_response.choices[0].message.reasoning_content
+        assert reasoning is not None
+        assert "Let me call a function" in reasoning
+
+        # Content should be cleaned
+        content = parsed_response.choices[0].message.content
+        assert content is None or "<think>" not in content

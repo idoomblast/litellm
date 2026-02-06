@@ -41,6 +41,7 @@ from .kimi_k2_tool_call_parser import (
     TOOL_CALL_FIELDS,
     TOOL_CALLS_SECTION_BEGIN,
     TOOL_CALLS_SECTION_END,
+    deduplicate_reasoning_parts,
     extract_tool_call_id_parts,
     has_tool_call_tokens,
     parse_tool_calls_from_content,
@@ -124,6 +125,9 @@ class ChutesChatCompletionStreamingHandler(BaseModelResponseIterator):
         # When _in_think_block is True, content goes to reasoning_content
         # When False, content goes to regular content
         self._in_think_block: bool = False
+
+        # Track if we've emitted any reasoning incrementally (affects flush stripping)
+        self._emitted_any_reasoning: bool = False
 
     def _check_for_section_begin(self, field: str) -> bool:
         """Check if buffer contains tool section begin token."""
@@ -344,35 +348,103 @@ class ChutesChatCompletionStreamingHandler(BaseModelResponseIterator):
 
         return tool_calls
 
+    def _deduplicate_chunk_reasoning(self, parts: List[str]) -> Optional[str]:
+        """
+        Deduplicate reasoning parts from a single chunk without stripping whitespace.
+
+        Unlike deduplicate_reasoning_parts(), this preserves leading/trailing whitespace
+        on each part, which is critical for incremental streaming where tokens like
+        " is", " reasoning" need their leading spaces preserved for text continuity.
+
+        Chutes may send the same reasoning token in reasoning, reasoning_content,
+        and thinking fields simultaneously. This removes exact duplicates.
+
+        Args:
+            parts: List of reasoning content strings from the same chunk
+
+        Returns:
+            Deduplicated content, or None if no content
+        """
+        if not parts:
+            return None
+        seen = set()
+        unique = []
+        for part in parts:
+            if part and part not in seen:
+                seen.add(part)
+                unique.append(part)
+        if not unique:
+            return None
+        return "".join(unique)
+
+    def _get_incremental_reasoning(self) -> Optional[str]:
+        """
+        Extract reasoning from dedicated reasoning fields for incremental emission.
+
+        Reasoning fields (reasoning_content, reasoning, thinking) don't need
+        buffering for think tags or tool call tokens (those are content-field concerns).
+        So we can emit their content immediately with per-chunk deduplication.
+
+        Tool call detection still runs on these buffers via _process_field_for_tool_calls,
+        but if no tool section is active, we emit and clear the buffer.
+
+        Returns:
+            Deduplicated reasoning content to emit, or None
+        """
+        reasoning_parts: List[str] = []
+        for field in ("reasoning_content", "reasoning", "thinking"):
+            buf = self._field_buffers[field]
+            if buf and not self._in_tool_section[field]:
+                reasoning_parts.append(buf)
+                self._field_buffers[field] = ""
+
+        if not reasoning_parts:
+            return None
+
+        return self._deduplicate_chunk_reasoning(reasoning_parts)
+
     def _flush_buffers_at_end_of_stream(
         self,
     ) -> tuple[Optional[str], Optional[str]]:
         """
         Flush remaining buffers at end of stream, processing think tags properly.
 
-        Handles the critical edge case of unclosed <think> tags:
-        If we're still in a think block when the stream ends (unclosed tag),
-        all buffered content is treated as reasoning_content.
+        Handles:
+        - Unclosed <think> tags: all buffered content becomes reasoning_content
+        - Any remaining reasoning field buffers (usually empty since they're
+          emitted incrementally, but may have content if in a tool section)
+        - Chutes may send the same reasoning in all three fields simultaneously
 
         Returns:
             Tuple of (content, reasoning_content) to append to output
         """
         content_out = ""
-        reasoning_out = ""
+        reasoning_parts: List[str] = []
 
-        # Flush all field buffers and process through think tag state machine
-        for field in TOOL_CALL_FIELDS:
+        # Flush content buffer through think tag state machine
+        remaining_content = self._flush_remaining_content("content")
+        if remaining_content:
+            content_part, reasoning_part = self._process_content_for_think_tags(remaining_content)
+            if content_part:
+                content_out += content_part
+            if reasoning_part:
+                reasoning_parts.append(reasoning_part)
+
+        # Flush any remaining reasoning field buffers
+        # (usually empty since they're emitted incrementally, but may have
+        # leftover content if a tool section was active)
+        for field in ("reasoning_content", "reasoning", "thinking"):
             remaining = self._flush_remaining_content(field)
-            if remaining and field == "content":
-                # Process through think tag state machine
-                content_part, reasoning_part = self._process_content_for_think_tags(remaining)
-                if content_part:
-                    content_out += content_part
-                if reasoning_part:
-                    reasoning_out += reasoning_part
-            elif remaining and field == "reasoning_content":
-                # Direct reasoning content bypasses think tag processing
-                reasoning_out += remaining
+            if remaining:
+                reasoning_parts.append(remaining)
+
+        # Deduplicate remaining reasoning parts
+        if self._emitted_any_reasoning:
+            # Preserve whitespace for continuity with previously emitted tokens
+            reasoning_out = self._deduplicate_chunk_reasoning(reasoning_parts) or ""
+        else:
+            # No previous incremental emission — strip for clean output
+            reasoning_out = deduplicate_reasoning_parts(reasoning_parts) or ""
 
         # Handle unclosed think tag case:
         # If we're still in a think block, all content is reasoning
@@ -390,12 +462,15 @@ class ChutesChatCompletionStreamingHandler(BaseModelResponseIterator):
         # Strip any remaining think tags that might have gotten through
         if content_out:
             content_out = strip_think_tags(content_out)
-        if reasoning_out:
+        if reasoning_out and not self._emitted_any_reasoning:
+            # Only strip think tags from reasoning when no incremental emission happened.
+            # When reasoning was streamed incrementally, the remaining tokens don't have
+            # think tags, and strip_think_tags would remove meaningful whitespace.
             reasoning_out = strip_think_tags(reasoning_out)
 
         return (
             content_out.strip() if content_out and content_out.strip() else None,
-            reasoning_out.strip() if reasoning_out and reasoning_out.strip() else None,
+            reasoning_out if reasoning_out and reasoning_out.strip() else None,
         )
 
     def chunk_parser(self, chunk: dict) -> ModelResponseStream:
@@ -444,17 +519,25 @@ class ChutesChatCompletionStreamingHandler(BaseModelResponseIterator):
         for field in TOOL_CALL_FIELDS:
             tool_calls_to_emit.extend(self._process_field_for_tool_calls(field, delta))
 
-        # Get safe content to emit (keeping some buffer for partial tokens)
-        # Note: We DON'T emit content incrementally anymore - we process it all
-        # through the think tag state machine at stream end
+        # Content field stays buffered (needs think tag + tool call token detection).
+        # Reasoning fields (reasoning_content, reasoning, thinking) are emitted
+        # incrementally — they don't need buffering for think tags or tool tokens.
         content_to_emit: Optional[str] = None
         reasoning_content: Optional[str] = None
 
-        # Handle end of stream - flush remaining buffers with think tag processing
+        # Emit reasoning fields incrementally (before finish_reason check)
+        if not finish_reason:
+            incremental_reasoning = self._get_incremental_reasoning()
+            if incremental_reasoning:
+                reasoning_content = incremental_reasoning
+                self._emitted_any_reasoning = True
+
+        # Handle end of stream - flush remaining content buffer with think tag processing
         if finish_reason:
             content_rem, reasoning_rem = self._flush_buffers_at_end_of_stream()
             content_to_emit = content_rem
-            reasoning_content = reasoning_rem
+            if reasoning_rem:
+                reasoning_content = reasoning_rem
 
         # Track if we emitted any tool calls
         if tool_calls_to_emit:

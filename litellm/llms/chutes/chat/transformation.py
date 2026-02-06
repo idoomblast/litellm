@@ -26,6 +26,7 @@ from litellm.types.utils import ModelResponse
 
 from ...openai.chat.gpt_transformation import OpenAIGPTConfig
 from .kimi_k2_tool_call_parser import (
+    deduplicate_reasoning_parts,
     extract_think_content_complete,
     has_think_start_tag,
     is_kimi_k2_model,
@@ -202,20 +203,32 @@ class ChutesChatConfig(OpenAIGPTConfig):
             if message is None:
                 continue
 
-            # First, extract <think> content from message.content to reasoning_content
+            # First, extract <think> content from message.content
+            think_reasoning = None
             if message.content and has_think_start_tag(message.content):
-                thinking, cleaned = extract_think_content_complete(message.content)
-
-                if thinking:
-                    # Append to existing reasoning_content or create new
-                    existing_reasoning = getattr(message, "reasoning_content", None)
-                    if existing_reasoning:
-                        message.reasoning_content = existing_reasoning + thinking
-                    else:
-                        message.reasoning_content = thinking
-
+                think_reasoning, cleaned = extract_think_content_complete(message.content)
                 # Update content with cleaned version (think tags removed)
                 message.content = cleaned
+
+            # Normalize all reasoning fields to reasoning_content (with dedup)
+            # Chutes may send same reasoning in reasoning, reasoning_content, and thinking
+            reasoning_parts = []
+            existing_rc = getattr(message, "reasoning_content", None)
+            if existing_rc and isinstance(existing_rc, str) and existing_rc.strip():
+                reasoning_parts.append(existing_rc.strip())
+            if think_reasoning:
+                reasoning_parts.append(think_reasoning)
+            for norm_field in ("reasoning", "thinking"):
+                norm_value = getattr(message, norm_field, None)
+                if norm_value and isinstance(norm_value, str) and norm_value.strip():
+                    reasoning_parts.append(norm_value.strip())
+                # Clear the original field after collecting
+                try:
+                    setattr(message, norm_field, None)
+                except Exception:
+                    pass
+            if reasoning_parts:
+                message.reasoning_content = deduplicate_reasoning_parts(reasoning_parts)
 
             # CRITICAL: If tool_calls already exist (from standard format), just clean up content
             if message.tool_calls:

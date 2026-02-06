@@ -7,6 +7,7 @@ Tests the parsing logic for Kimi K2's special token format for tool calls.
 import pytest
 
 from litellm.llms.chutes.chat.kimi_k2_tool_call_parser import (
+    deduplicate_reasoning_parts,
     extract_think_content,
     extract_tool_call_id_parts,
     has_tool_call_tokens,
@@ -573,3 +574,67 @@ class TestChutesFormatParsing:
         assert len(official_calls) == 1
         assert len(chutes_calls) == 1
         assert official_calls[0].function.name == chutes_calls[0].function.name
+
+
+class TestDeduplicateReasoningParts:
+    """Test deduplicate_reasoning_parts function."""
+
+    def test_empty_list(self):
+        """Test with empty list returns None."""
+        assert deduplicate_reasoning_parts([]) is None
+
+    def test_single_part(self):
+        """Test with single part returns that part."""
+        result = deduplicate_reasoning_parts(["reasoning text"])
+        assert result == "reasoning text"
+
+    def test_identical_parts_deduplicated(self):
+        """Test that identical parts are deduplicated to one copy."""
+        result = deduplicate_reasoning_parts([
+            "same reasoning",
+            "same reasoning",
+            "same reasoning",
+        ])
+        assert result == "same reasoning"
+        assert result.count("same reasoning") == 1
+
+    def test_different_parts_combined(self):
+        """Test that different parts are combined with newline."""
+        result = deduplicate_reasoning_parts([
+            "first reasoning",
+            "second reasoning",
+        ])
+        assert result is not None
+        assert "first reasoning" in result
+        assert "second reasoning" in result
+
+    def test_whitespace_stripped(self):
+        """Test that whitespace is stripped from parts."""
+        result = deduplicate_reasoning_parts([
+            "  reasoning with spaces  ",
+            "reasoning with spaces",
+        ])
+        assert result == "reasoning with spaces"
+        assert result.count("reasoning with spaces") == 1
+
+    def test_empty_strings_ignored(self):
+        """Test that empty strings are ignored."""
+        result = deduplicate_reasoning_parts(["", "  ", "actual content"])
+        assert result == "actual content"
+
+    def test_all_empty_returns_none(self):
+        """Test that all empty strings returns None."""
+        result = deduplicate_reasoning_parts(["", "  ", ""])
+        assert result is None
+
+    def test_preserves_order(self):
+        """Test that order of unique parts is preserved."""
+        result = deduplicate_reasoning_parts([
+            "first",
+            "second",
+            "first",  # duplicate
+            "third",
+        ])
+        assert result is not None
+        parts = result.split("\n")
+        assert parts == ["first", "second", "third"]

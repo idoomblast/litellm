@@ -853,3 +853,209 @@ class TestThinkTagToReasoningContent:
         # Content should be cleaned
         content = parsed_response.choices[0].message.content
         assert content is None or "<think>" not in content
+
+
+class TestReasoningFieldNormalizationNonStreaming:
+    """Test normalization of reasoning/thinking fields to reasoning_content in non-streaming."""
+
+    def setup_method(self):
+        self.config = ChutesChatConfig()
+
+    def test_reasoning_field_normalized_to_reasoning_content(self):
+        """Test that 'reasoning' field is normalized into reasoning_content."""
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="Here is my answer",
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+        # Set reasoning field (not a standard Message field, set via setattr)
+        response.choices[0].message.reasoning = "I analyzed the problem carefully"
+
+        parsed = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        reasoning = parsed.choices[0].message.reasoning_content
+        assert reasoning is not None
+        assert "I analyzed the problem carefully" in reasoning
+
+        content = parsed.choices[0].message.content
+        assert content is not None
+        assert "Here is my answer" in content
+
+        # Original reasoning field should be cleared
+        assert getattr(parsed.choices[0].message, "reasoning", None) is None
+
+    def test_thinking_field_normalized_to_reasoning_content(self):
+        """Test that 'thinking' field is normalized into reasoning_content."""
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="The result is 42",
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+        response.choices[0].message.thinking = "Step by step calculation..."
+
+        parsed = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        reasoning = parsed.choices[0].message.reasoning_content
+        assert reasoning is not None
+        assert "Step by step calculation..." in reasoning
+
+        # Original thinking field should be cleared
+        assert getattr(parsed.choices[0].message, "thinking", None) is None
+
+    def test_duplicate_reasoning_fields_deduplicated(self):
+        """Test that identical content in reasoning, reasoning_content, thinking is deduplicated."""
+        same_text = "Let me think about this problem"
+
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="answer",
+                        reasoning_content=same_text,
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+        response.choices[0].message.reasoning = same_text
+        response.choices[0].message.thinking = same_text
+
+        parsed = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        reasoning = parsed.choices[0].message.reasoning_content
+        assert reasoning is not None
+        # Should contain the text exactly once, not three times
+        assert reasoning.count("Let me think about this problem") == 1
+
+    def test_different_reasoning_fields_combined(self):
+        """Test that different content in reasoning fields is combined."""
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="answer",
+                        reasoning_content="analysis from reasoning_content",
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+        response.choices[0].message.reasoning = "analysis from reasoning field"
+
+        parsed = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        reasoning = parsed.choices[0].message.reasoning_content
+        assert reasoning is not None
+        assert "analysis from reasoning_content" in reasoning
+        assert "analysis from reasoning field" in reasoning
+
+    def test_think_tags_plus_reasoning_field_deduplicated(self):
+        """Test dedup when <think> content matches reasoning field content."""
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="<think>my reasoning</think>answer",
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+        # Same reasoning sent in the reasoning field
+        response.choices[0].message.reasoning = "my reasoning"
+
+        parsed = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        reasoning = parsed.choices[0].message.reasoning_content
+        assert reasoning is not None
+        # Should appear only once
+        assert reasoning.count("my reasoning") == 1
+
+        content = parsed.choices[0].message.content
+        assert content is not None
+        assert "answer" in content
+
+    def test_all_three_fields_plus_think_tags_deduplicated(self):
+        """Test dedup with <think> tags AND all three reasoning fields having same content."""
+        same_text = "deep analysis"
+
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content=f"<think>{same_text}</think>final answer",
+                        reasoning_content=same_text,
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+        response.choices[0].message.reasoning = same_text
+        response.choices[0].message.thinking = same_text
+
+        parsed = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        reasoning = parsed.choices[0].message.reasoning_content
+        assert reasoning is not None
+        assert reasoning.count("deep analysis") == 1
+
+        content = parsed.choices[0].message.content
+        assert content is not None
+        assert "final answer" in content
+
+    def test_no_reasoning_fields_unchanged(self):
+        """Test that responses without any reasoning fields are unchanged."""
+        response = ModelResponse(
+            id="test-id",
+            choices=[
+                Choices(
+                    index=0,
+                    message=Message(
+                        role="assistant",
+                        content="Just a plain response",
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            model="kimi-k2",
+        )
+
+        parsed = self.config._parse_kimi_k2_tool_calls_from_response(response)
+
+        assert parsed.choices[0].message.content == "Just a plain response"
+        reasoning = getattr(parsed.choices[0].message, "reasoning_content", None)
+        assert reasoning is None

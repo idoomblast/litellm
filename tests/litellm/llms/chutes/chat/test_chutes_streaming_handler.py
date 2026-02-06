@@ -989,3 +989,283 @@ class TestChutesFormatStreaming:
         assert result.choices[0].delta.tool_calls is not None
         assert len(result.choices[0].delta.tool_calls) == 1
         assert result.choices[0].delta.tool_calls[0].function.name == "read_file"
+
+
+class TestReasoningFieldNormalization:
+    """Test normalization of reasoning/thinking fields to reasoning_content in streaming."""
+
+    def test_reasoning_field_normalized_to_reasoning_content(self):
+        """Test that 'reasoning' field content appears in reasoning_content output."""
+        handler = ChutesChatCompletionStreamingHandler(
+            streaming_response=MockStreamingResponse([]),
+            sync_stream=True,
+        )
+
+        chunk = {
+            "id": "test-id",
+            "object": "chat.completion.chunk",
+            "created": 1234567890,
+            "model": "kimi-k2-model",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "content": "answer",
+                        "reasoning": "I need to think about this carefully",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+
+        result = handler.chunk_parser(chunk)
+
+        reasoning = result.choices[0].delta.reasoning_content or ""
+        assert "I need to think about this carefully" in reasoning
+
+        content = result.choices[0].delta.content or ""
+        assert "answer" in content
+
+    def test_thinking_field_normalized_to_reasoning_content(self):
+        """Test that 'thinking' field content appears in reasoning_content output."""
+        handler = ChutesChatCompletionStreamingHandler(
+            streaming_response=MockStreamingResponse([]),
+            sync_stream=True,
+        )
+
+        chunk = {
+            "id": "test-id",
+            "object": "chat.completion.chunk",
+            "created": 1234567890,
+            "model": "kimi-k2-model",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "content": "the answer",
+                        "thinking": "Let me work through this step by step",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+
+        result = handler.chunk_parser(chunk)
+
+        reasoning = result.choices[0].delta.reasoning_content or ""
+        assert "Let me work through this step by step" in reasoning
+
+        content = result.choices[0].delta.content or ""
+        assert "the answer" in content
+
+    def test_duplicate_reasoning_across_fields_deduplicated(self):
+        """Test that identical reasoning in multiple fields is deduplicated."""
+        handler = ChutesChatCompletionStreamingHandler(
+            streaming_response=MockStreamingResponse([]),
+            sync_stream=True,
+        )
+
+        same_reasoning = "Let me analyze the problem"
+
+        chunk = {
+            "id": "test-id",
+            "object": "chat.completion.chunk",
+            "created": 1234567890,
+            "model": "kimi-k2-model",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "content": "answer",
+                        "reasoning": same_reasoning,
+                        "reasoning_content": same_reasoning,
+                        "thinking": same_reasoning,
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+
+        result = handler.chunk_parser(chunk)
+
+        reasoning = result.choices[0].delta.reasoning_content or ""
+        # Should contain the reasoning exactly once, not three times
+        assert reasoning.count("Let me analyze the problem") == 1
+
+    def test_different_reasoning_across_fields_combined(self):
+        """Test that different reasoning in different fields is combined."""
+        handler = ChutesChatCompletionStreamingHandler(
+            streaming_response=MockStreamingResponse([]),
+            sync_stream=True,
+        )
+
+        chunk = {
+            "id": "test-id",
+            "object": "chat.completion.chunk",
+            "created": 1234567890,
+            "model": "kimi-k2-model",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "content": "answer",
+                        "reasoning_content": "first reasoning",
+                        "reasoning": "second reasoning",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+
+        result = handler.chunk_parser(chunk)
+
+        reasoning = result.choices[0].delta.reasoning_content or ""
+        assert "first reasoning" in reasoning
+        assert "second reasoning" in reasoning
+
+    def test_reasoning_field_streamed_incrementally(self):
+        """Test that reasoning field content is emitted incrementally, not buffered."""
+        handler = ChutesChatCompletionStreamingHandler(
+            streaming_response=MockStreamingResponse([]),
+            sync_stream=True,
+        )
+
+        chunk1 = {
+            "id": "test-id",
+            "object": "chat.completion.chunk",
+            "created": 1234567890,
+            "model": "kimi-k2-model",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "reasoning": "First part of reasoning. ",
+                    },
+                    "finish_reason": None,
+                }
+            ],
+        }
+
+        chunk2 = {
+            "id": "test-id",
+            "object": "chat.completion.chunk",
+            "created": 1234567890,
+            "model": "kimi-k2-model",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "content": "the answer",
+                        "reasoning": "Second part of reasoning.",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+
+        # Chunk 1: reasoning should be emitted immediately
+        result1 = handler.chunk_parser(chunk1)
+        reasoning1 = result1.choices[0].delta.reasoning_content or ""
+        assert "First part of reasoning." in reasoning1
+
+        # Chunk 2: second reasoning emitted, content flushed at end
+        result2 = handler.chunk_parser(chunk2)
+        reasoning2 = result2.choices[0].delta.reasoning_content or ""
+        assert "Second part of reasoning." in reasoning2
+
+        content = result2.choices[0].delta.content or ""
+        assert "the answer" in content
+
+    def test_duplicate_reasoning_across_chunks_deduplicated_incrementally(self):
+        """Test dedup when same reasoning is sent in multiple fields across chunks."""
+        handler = ChutesChatCompletionStreamingHandler(
+            streaming_response=MockStreamingResponse([]),
+            sync_stream=True,
+        )
+
+        # Chutes sends the same reasoning in all three fields on each chunk
+        chunk1 = {
+            "id": "test-id",
+            "object": "chat.completion.chunk",
+            "created": 1234567890,
+            "model": "kimi-k2-model",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "reasoning": "thinking",
+                        "reasoning_content": "thinking",
+                        "thinking": "thinking",
+                    },
+                    "finish_reason": None,
+                }
+            ],
+        }
+
+        chunk2 = {
+            "id": "test-id",
+            "object": "chat.completion.chunk",
+            "created": 1234567890,
+            "model": "kimi-k2-model",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "content": "answer",
+                        "reasoning": " more",
+                        "reasoning_content": " more",
+                        "thinking": " more",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+
+        # Chunk 1: all three fields deduped, emitted incrementally
+        result1 = handler.chunk_parser(chunk1)
+        reasoning1 = result1.choices[0].delta.reasoning_content or ""
+        assert reasoning1 == "thinking"  # Deduped to single copy
+
+        # Chunk 2: same dedup, preserving leading space for continuity
+        result2 = handler.chunk_parser(chunk2)
+        reasoning2 = result2.choices[0].delta.reasoning_content or ""
+        assert reasoning2 == " more"  # Leading space preserved, deduped
+
+        # Client concatenates: "thinking" + " more" = "thinking more"
+
+    def test_reasoning_content_streamed_token_by_token(self):
+        """Test that reasoning_content tokens stream incrementally with whitespace preserved."""
+        handler = ChutesChatCompletionStreamingHandler(
+            streaming_response=MockStreamingResponse([]),
+            sync_stream=True,
+        )
+
+        tokens = ["this", " is", " reasoning", " example"]
+        results = []
+
+        for i, token in enumerate(tokens):
+            is_last = i == len(tokens) - 1
+            chunk = {
+                "id": "test-id",
+                "object": "chat.completion.chunk",
+                "created": 1234567890,
+                "model": "kimi-k2-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"reasoning_content": token},
+                        "finish_reason": "stop" if is_last else None,
+                    }
+                ],
+            }
+            results.append(handler.chunk_parser(chunk))
+
+        # Each token should be emitted incrementally
+        assert results[0].choices[0].delta.reasoning_content == "this"
+        assert results[1].choices[0].delta.reasoning_content == " is"
+        assert results[2].choices[0].delta.reasoning_content == " reasoning"
+        assert results[3].choices[0].delta.reasoning_content == " example"
+
+        # Client concatenation: "this" + " is" + " reasoning" + " example"
+        full = "".join(r.choices[0].delta.reasoning_content or "" for r in results)
+        assert full == "this is reasoning example"

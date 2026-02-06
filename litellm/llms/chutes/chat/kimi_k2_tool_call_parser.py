@@ -394,6 +394,34 @@ def parse_tool_calls_from_message(
     return all_tool_calls if all_tool_calls else None, updated_message
 
 
+def deduplicate_reasoning_parts(parts: List[str]) -> Optional[str]:
+    """
+    Deduplicate reasoning content collected from multiple fields.
+
+    Chutes may send the same reasoning content in multiple fields
+    (reasoning, reasoning_content, thinking) simultaneously. This removes
+    exact duplicates while preserving unique content.
+
+    Args:
+        parts: List of reasoning content strings from different fields
+
+    Returns:
+        Deduplicated reasoning content joined by newline, or None if no content
+    """
+    if not parts:
+        return None
+    seen = set()
+    unique = []
+    for part in parts:
+        stripped = part.strip()
+        if stripped and stripped not in seen:
+            seen.add(stripped)
+            unique.append(stripped)
+    if not unique:
+        return None
+    return "\n".join(unique)
+
+
 def is_kimi_k2_model(model: str) -> bool:
     """
     Check if the model is a Kimi K2 model that uses native tool call format.

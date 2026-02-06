@@ -219,6 +219,11 @@ class ChutesChatConfig(OpenAIGPTConfig):
 
             # CRITICAL: If tool_calls already exist (from standard format), just clean up content
             if message.tool_calls:
+                # Strip whitespace from function names (Kimi K2 on Chutes adds extra spaces)
+                for tc in message.tool_calls:
+                    if tc.function and tc.function.name:
+                        tc.function.name = tc.function.name.strip()
+
                 # Strip native tokens from content fields (they're duplicates)
                 for field in TOOL_CALL_FIELDS:
                     field_value = getattr(message, field, None)

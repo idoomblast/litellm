@@ -266,7 +266,7 @@ def extract_tool_call_id_parts(tool_call_id: str) -> Tuple[str, int]:
         raise ValueError(f"Invalid tool call ID format (missing index): {tool_call_id}")
 
     parts = remainder.rsplit(":", 1)
-    func_name = parts[0]
+    func_name = parts[0].strip()
     try:
         idx = int(parts[1])
     except ValueError:

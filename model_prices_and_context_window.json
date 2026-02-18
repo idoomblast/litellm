@@ -17127,6 +17127,24 @@
         "supports_response_schema": true,
         "supports_vision": true
     },
+    "github_copilot/gpt-5.1-codex-mini": {
+        "litellm_provider": "github_copilot",
+        "max_input_tokens": 128000,
+        "max_output_tokens": 128000,
+        "max_tokens": 128000,
+        "mode": "responses",
+        "supported_endpoints": [
+            "/v1/responses"
+        ],
+        "supports_function_calling": true,
+        "supports_native_streaming": true,
+        "supports_parallel_function_calling": true,
+        "supports_reasoning": true,
+        "supports_response_schema": true,
+        "supports_system_messages": false,
+        "supports_tool_choice": true,
+        "supports_vision": true
+    },
     "github_copilot/gpt-5.1-codex-max": {
         "litellm_provider": "github_copilot",
         "max_input_tokens": 128000,
@@ -17137,8 +17155,12 @@
             "/v1/responses"
         ],
         "supports_function_calling": true,
+        "supports_native_streaming": true,
         "supports_parallel_function_calling": true,
+        "supports_reasoning": true,
         "supports_response_schema": true,
+        "supports_system_messages": false,
+        "supports_tool_choice": true,
         "supports_vision": true
     },
     "github_copilot/gpt-5.2": {
@@ -17152,8 +17174,12 @@
             "/v1/responses"
         ],
         "supports_function_calling": true,
+        "supports_native_streaming": true,
         "supports_parallel_function_calling": true,
+        "supports_reasoning": true,
         "supports_response_schema": true,
+        "supports_system_messages": false,
+        "supports_tool_choice": true,
         "supports_vision": true
     },
     "github_copilot/gpt-5.2-codex": {
@@ -17166,8 +17192,12 @@
             "/v1/responses"
         ],
         "supports_function_calling": true,
+        "supports_native_streaming": true,
         "supports_parallel_function_calling": true,
+        "supports_reasoning": true,
         "supports_response_schema": true,
+        "supports_system_messages": false,
+        "supports_tool_choice": true,
         "supports_vision": true
     },
     "github_copilot/gpt-5.3-codex": {
@@ -17180,8 +17210,12 @@
             "/v1/responses"
         ],
         "supports_function_calling": true,
+        "supports_native_streaming": true,
         "supports_parallel_function_calling": true,
+        "supports_reasoning": true,
         "supports_response_schema": true,
+        "supports_system_messages": false,
+        "supports_tool_choice": true,
         "supports_vision": true
     },
     "github_copilot/text-embedding-3-small": {

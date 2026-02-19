@@ -7944,6 +7944,11 @@ class ProviderConfigManager:
                 ZAIChatConfig,
             )
             return ZAIChatConfig()
+        elif "moonshotai/" in model or "kimi" in model.lower():
+            from litellm.llms.vertex_ai.vertex_ai_partner_models.moonshot.transformation import (
+                VertexAIMoonshotConfig,
+            )
+            return VertexAIMoonshotConfig()
         elif model in litellm.vertex_mistral_models:
             if "codestral" in model:
                 return litellm.CodestralTextCompletionConfig()

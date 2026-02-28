@@ -110,7 +110,14 @@ async def google_stream_generate_content(
 
     # Check if response is an async iterator (streaming response)
     if response is not None and hasattr(response, "__aiter__"):
-        return StreamingResponse(content=response, media_type="text/event-stream")
+        from litellm.proxy.streaming_heartbeat import maybe_wrap_with_heartbeat
+
+        # Wrap with SSE heartbeat to prevent reverse proxy timeouts
+        # (e.g. Cloudflare 524) when TTFB exceeds proxy read timeout.
+        return StreamingResponse(
+            content=maybe_wrap_with_heartbeat(response),
+            media_type="text/event-stream",
+        )
     return response
 
 

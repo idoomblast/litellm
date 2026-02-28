@@ -872,6 +872,10 @@ class ProxyBaseLLMRequestProcessing:
                 # This handles cases like websearch_interception agentic loop
                 # which returns a non-streaming dict even for streaming requests
                 if self._is_streaming_response(response):
+                    from litellm.proxy.streaming_heartbeat import (
+                        maybe_wrap_with_heartbeat,
+                    )
+
                     selected_data_generator = (
                         ProxyBaseLLMRequestProcessing.async_sse_data_generator(
                             response=response,
@@ -879,6 +883,11 @@ class ProxyBaseLLMRequestProcessing:
                             request_data=self.data,
                             proxy_logging_obj=proxy_logging_obj,
                         )
+                    )
+                    # Wrap with SSE heartbeat to prevent reverse proxy timeouts
+                    # (e.g. Cloudflare 524) when TTFB exceeds proxy read timeout.
+                    selected_data_generator = maybe_wrap_with_heartbeat(
+                        selected_data_generator
                     )
                     return await create_response(
                         generator=selected_data_generator,

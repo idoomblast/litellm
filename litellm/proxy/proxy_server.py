@@ -4872,11 +4872,17 @@ async def async_data_generator(
 def select_data_generator(
     response, user_api_key_dict: UserAPIKeyAuth, request_data: dict
 ):
-    return async_data_generator(
+    from litellm.proxy.streaming_heartbeat import maybe_wrap_with_heartbeat
+
+    generator = async_data_generator(
         response=response,
         user_api_key_dict=user_api_key_dict,
         request_data=request_data,
     )
+    # Wrap with SSE heartbeat to prevent reverse proxy timeouts (e.g. Cloudflare 524)
+    # when TTFB from upstream AI providers exceeds the proxy's read timeout.
+    # Enable via PROXY_SSE_HEARTBEAT_INTERVAL env var (seconds). Default: 0 (disabled).
+    return maybe_wrap_with_heartbeat(generator)
 
 
 def get_litellm_model_info(model: dict = {}):
@@ -9878,11 +9884,15 @@ async def async_queue_request(
         if (
             "stream" in data and data["stream"] is True
         ):  # use generate_responses to stream responses
+            from litellm.proxy.streaming_heartbeat import maybe_wrap_with_heartbeat
+
             return StreamingResponse(
-                async_data_generator(
-                    user_api_key_dict=user_api_key_dict,
-                    response=response,
-                    request_data=data,
+                maybe_wrap_with_heartbeat(
+                    async_data_generator(
+                        user_api_key_dict=user_api_key_dict,
+                        response=response,
+                        request_data=data,
+                    )
                 ),
                 media_type="text/event-stream",
             )

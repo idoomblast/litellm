@@ -1,5 +1,6 @@
 export enum Providers {
   A2A_Agent = "A2A Agent",
+  alibaba_coding = "Alibaba Coding",
   AIML = "AI/ML API",
   Bedrock = "Amazon Bedrock",
   Anthropic = "Anthropic",
@@ -50,6 +51,7 @@ export enum Providers {
 
 export const provider_map: Record<string, string> = {
   A2A_Agent: "a2a_agent",
+  alibaba_coding: "alibaba_coding",
   AIML: "aiml",
   OpenAI: "openai",
   OpenAI_Text: "text-completion-openai",
@@ -102,6 +104,7 @@ const asset_logos_folder = "../ui/assets/logos/";
 
 export const providerLogoMap: Record<string, string> = {
   [Providers.A2A_Agent]: `${asset_logos_folder}a2a_agent.png`,
+  [Providers.alibaba_coding]: `${asset_logos_folder}alibaba_coding.png`,
   [Providers.AIML]: `${asset_logos_folder}aiml_api.svg`,
   [Providers.Anthropic]: `${asset_logos_folder}anthropic.svg`,
   [Providers.AssemblyAI]: `${asset_logos_folder}assemblyai_small.png`,
@@ -215,7 +218,9 @@ export const getPlaceholder = (selectedProvider: string): string => {
   } else if (selectedProvider === Providers.xiaomi_mimo) {
     return "xiaomi_mimo/mimo-v2-flash";
   } else if (selectedProvider === Providers.chutes) {
-    return "chutes/MiniMaxAI/MiniMax-M2.1-TEE";
+    return "chutes/moonshotai/Kimi-K2.5-TEE";
+  } else if (selectedProvider === Providers.alibaba_coding) {
+    return "alibaba_coding/qwen3.5-plus";
   } else {
     return "gpt-3.5-turbo";
   }

@@ -463,6 +463,7 @@ LITELLM_CHAT_PROVIDERS = [
     "nscale",
     "nebius",
     "dashscope",
+    "alibaba_coding",
     "moonshot",
     "publicai",
     "v0",
@@ -619,6 +620,7 @@ openai_compatible_endpoints: List = [
     "https://nano-gpt.com/api/v1",
     "https://api.poe.com/v1",
     "https://llm.chutes.ai/v1/",
+    "https://coding-intl.dashscope.aliyuncs.com/v1/",
     "https://api.v0.dev/v1",
     "https://api.morphllm.com/v1",
     "https://api.lambda.ai/v1",
@@ -665,6 +667,7 @@ openai_compatible_providers: List = [
     "publicai",  # PublicAI - JSON-configured provider
     "synthetic",  # Synthetic - JSON-configured provider
     "apertis",  # Apertis - JSON-configured provider
+    "alibaba_coding",
     "nano-gpt",  # Nano-GPT - JSON-configured provider
     "poe",  # Poe - JSON-configured provider
     "chutes",  # Chutes - JSON-configured provider
@@ -700,6 +703,7 @@ openai_text_completion_compatible_providers: List = (
         "publicai",
         "synthetic",
         "apertis",
+        "alibaba_coding",
         "nano-gpt",
         "poe",
         "chutes",

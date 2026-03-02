@@ -18,6 +18,34 @@
     "default_model_placeholder": "aiml/flux-pro/v1.1"
   },
   {
+    "provider": "alibaba_coding",
+    "provider_display_name": "Alibaba Coding",
+    "litellm_provider": "alibaba_coding",
+    "credential_fields": [
+      {
+        "key": "api_key",
+        "label": "API Key",
+        "placeholder": null,
+        "tooltip": null,
+        "required": true,
+        "field_type": "password",
+        "options": null,
+        "default_value": null
+      },
+      {
+        "key": "api_base",
+        "label": "API Base",
+        "placeholder": "https://...",
+        "tooltip": null,
+        "required": false,
+        "field_type": "text",
+        "options": null,
+        "default_value": "https://coding-intl.dashscope.aliyuncs.com/v1"
+      }
+    ],
+    "default_model_placeholder": "alibaba_coding/qwen3.5-plus"
+  },
+  {
     "provider": "AI21",
     "provider_display_name": "Ai21",
     "litellm_provider": "ai21",

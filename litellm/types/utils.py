@@ -3108,6 +3108,7 @@ class LlmProviders(str, Enum):
     MINIMAX = "minimax"
     SYNTHETIC = "synthetic"
     APERTIS = "apertis"
+    ALIBABA_CODING = "alibaba_coding"
     NANOGPT = "nano-gpt"
     POE = "poe"
     CHUTES = "chutes"

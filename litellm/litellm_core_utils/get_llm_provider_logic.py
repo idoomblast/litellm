@@ -289,6 +289,9 @@ def get_llm_provider(  # noqa: PLR0915
                     elif endpoint == "https://llm.chutes.ai/v1/":
                         custom_llm_provider = "chutes"
                         dynamic_api_key = get_secret_str("CHUTES_API_KEY")
+                    elif endpoint == "https://coding-intl.dashscope.aliyuncs.com/v1/":
+                        custom_llm_provider = "alibaba_coding"
+                        dynamic_api_key = get_secret_str("ALIBABA_CODING_API_KEY")
                     elif endpoint == "https://api.v0.dev/v1":
                         custom_llm_provider = "v0"
                         dynamic_api_key = get_secret_str("V0_API_KEY")

@@ -193,15 +193,32 @@ class VertexAIMoonshotConfig(OpenAIGPTConfig):
             if not message:
                 continue
 
-            # Handle <think> tags → reasoning_content
+            # First, extract <think> content from message.content
+            think_reasoning = None
             if message.content and "<think>" in message.content:
-                thinking, remaining = extract_think_content_complete(message.content)
-                if thinking:
-                    message.reasoning_content = thinking
-                if remaining is not None:
-                    message.content = remaining
-                else:
-                    message.content = None
+                think_reasoning, cleaned = extract_think_content_complete(message.content)
+                # Update content with cleaned version (think tags removed)
+                message.content = cleaned
+
+            # Normalize all reasoning fields to reasoning_content (with dedup)
+            # API may send same reasoning in reasoning, reasoning_content, and thinking
+            reasoning_parts = []
+            existing_rc = getattr(message, "reasoning_content", None)
+            if existing_rc and isinstance(existing_rc, str) and existing_rc.strip():
+                reasoning_parts.append(existing_rc.strip())
+            if think_reasoning:
+                reasoning_parts.append(think_reasoning)
+            for norm_field in ("reasoning", "thinking"):
+                norm_value = getattr(message, norm_field, None)
+                if norm_value and isinstance(norm_value, str) and norm_value.strip():
+                    reasoning_parts.append(norm_value.strip())
+                # Clear the original field after collecting
+                try:
+                    setattr(message, norm_field, None)
+                except Exception:
+                    pass
+            if reasoning_parts:
+                message.reasoning_content = deduplicate_reasoning_parts(reasoning_parts)
 
             # If tool_calls already exist (from standard format), just clean content
             if message.tool_calls:

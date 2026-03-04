@@ -393,6 +393,21 @@ class TestIsKimiK2Model:
         assert is_kimi_k2_model("Kimi-K2-v1") is True
         assert is_kimi_k2_model("kimi-k2-instruct-2024") is True
 
+    def test_qwen3_coder_models(self):
+        """Test detection of Qwen3-Coder models that use native tool call format."""
+        assert is_kimi_k2_model("qwen3-coder-next") is True
+        assert is_kimi_k2_model("Qwen/Qwen3-Coder-Next") is True
+        assert is_kimi_k2_model("chutes/Qwen/Qwen3-Coder-Next") is True
+        assert is_kimi_k2_model("alibaba_coding/qwen3-coder-next") is True
+        assert is_kimi_k2_model("qwen3-coder-plus") is True
+        assert is_kimi_k2_model("Qwen3-Coder-Next-TEE") is True
+
+    def test_non_qwen3_coder_models(self):
+        """Test that non-Qwen3-Coder Qwen models are NOT matched."""
+        assert is_kimi_k2_model("qwen3-max") is False
+        assert is_kimi_k2_model("qwen3.5-plus") is False
+        assert is_kimi_k2_model("qwen-turbo") is False
+
 
 class TestExtractThinkContent:
     """Test extract_think_content function for <think>...</think> tags."""

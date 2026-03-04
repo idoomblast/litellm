@@ -147,6 +147,8 @@ class AlibabaCodingChatConfig(OpenAIGPTConfig):
                 for tc in message.tool_calls:
                     if tc.function and tc.function.name:
                         tc.function.name = tc.function.name.strip()
+                    elif tc.function and tc.function.name is None:
+                        tc.function.name = ""
 
                 for field in TOOL_CALL_FIELDS:
                     field_value = getattr(message, field, None)
@@ -215,8 +217,9 @@ class AlibabaCodingChatConfig(OpenAIGPTConfig):
             json_mode=json_mode,
         )
 
-        if self._is_native_tool_call_model(model):
-            response = self._parse_tool_calls_from_response(response)
+        # Always parse — content-driven, not model-name-driven.
+        # If no native tokens / <think> tags are present, this is a no-op.
+        response = self._parse_tool_calls_from_response(response)
 
         return response
 

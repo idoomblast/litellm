@@ -528,6 +528,10 @@ class OpenAIGPTConfig(BaseLLMModelInfo, BaseConfig):
                 _openai_tool_calls = []
                 for _tc in tool_calls:
                     _openai_tc = ChatCompletionMessageToolCall(**_tc)  # type: ignore
+                    # Fix null function.name - some providers return None
+                    # which crashes downstream validation expecting a string
+                    if _openai_tc.function and _openai_tc.function.name is None:
+                        _openai_tc.function.name = ""
                     _openai_tool_calls.append(_openai_tc)
                 fixed_tool_calls = _handle_invalid_parallel_tool_calls(
                     _openai_tool_calls

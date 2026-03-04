@@ -247,7 +247,7 @@ def _handle_invalid_parallel_tool_calls(
     try:
         replacements: Dict[int, List[ChatCompletionMessageToolCall]] = defaultdict(list)
         for i, tool_call in enumerate(tool_calls):
-            current_function = tool_call.function.name
+            current_function = tool_call.function.name or ""
             function_args = json.loads(tool_call.function.arguments)
             if current_function == "multi_tool_use.parallel":
                 verbose_logger.debug(

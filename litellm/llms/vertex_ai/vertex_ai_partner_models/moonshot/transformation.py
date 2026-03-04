@@ -229,10 +229,12 @@ class VertexAIMoonshotConfig(OpenAIGPTConfig):
                         cleaned = strip_native_tool_tokens(field_value)
                         setattr(message, field, cleaned if cleaned else None)
 
-                # Strip whitespace from function names
+                # Strip whitespace from function names; fix null names
                 for tc in message.tool_calls:
                     if tc.function and tc.function.name:
                         tc.function.name = tc.function.name.strip()
+                    elif tc.function and tc.function.name is None:
+                        tc.function.name = ""
 
                 # Fix finish_reason
                 if hasattr(choice, "finish_reason") and choice.finish_reason != "tool_calls":
@@ -276,7 +278,7 @@ class VertexAIMoonshotConfig(OpenAIGPTConfig):
         api_key: Optional[str] = None,
         json_mode: Optional[bool] = None,
     ) -> ModelResponse:
-        """Transform response and parse Kimi K2 tool calls if needed."""
+        """Transform response and parse native tool call tokens if present."""
         response = super().transform_response(
             model=model,
             raw_response=raw_response,
@@ -291,9 +293,9 @@ class VertexAIMoonshotConfig(OpenAIGPTConfig):
             json_mode=json_mode,
         )
 
-        # Parse Kimi K2 native tool calls
-        if is_kimi_k2_model(model):
-            response = self._parse_kimi_k2_tool_calls_from_response(response)
+        # Always parse — content-driven, not model-name-driven.
+        # If no native tokens / <think> tags are present, this is a no-op.
+        response = self._parse_kimi_k2_tool_calls_from_response(response)
 
         return response
 
@@ -786,15 +788,18 @@ class VertexAIMoonshotStreamingHandler(BaseModelResponseIterator):
         if standard_tool_calls:
             self._saw_standard_tool_calls = True
             self._emitted_any_tool_calls = True
-            # Strip whitespace and XML tags from function names
+            # Strip whitespace and XML tags from function names; fix null names
             for tc in standard_tool_calls:
                 if isinstance(tc, dict):
                     func = tc.get("function")
-                    if isinstance(func, dict) and func.get("name"):
-                        name = func["name"]
-                        if "<tool_call>" in name:
-                            name = self.TOOL_CALL_XML_PATTERN.sub("", name)
-                        func["name"] = name.strip()
+                    if isinstance(func, dict):
+                        name = func.get("name")
+                        if name is None:
+                            func["name"] = ""
+                        elif name:
+                            if "<tool_call>" in name:
+                                name = self.TOOL_CALL_XML_PATTERN.sub("", name)
+                            func["name"] = name.strip()
 
         # Process each field for tool call tokens (adds to _field_buffers)
         tool_calls_to_emit: List[ChatCompletionDeltaToolCall] = []

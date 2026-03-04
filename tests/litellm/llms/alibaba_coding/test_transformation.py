@@ -126,6 +126,12 @@ class TestAlibabaCodingChatConfig:
         assert self.config._is_native_tool_call_model("kimi-K2-Instruct") is True
         assert self.config._is_native_tool_call_model("gpt-4o") is False
 
+    def test_should_detect_qwen3_coder_as_native_tool_call_model(self):
+        """qwen3-coder-next and qwen3-coder-plus use native tool call format."""
+        assert self.config._is_native_tool_call_model("qwen3-coder-next") is True
+        assert self.config._is_native_tool_call_model("qwen3-coder-plus") is True
+        assert self.config._is_native_tool_call_model("Qwen/Qwen3-Coder-Next") is True
+
 
 class TestParseToolCallsFromResponse:
     """Test _parse_tool_calls_from_response on non-streaming responses."""
@@ -293,3 +299,55 @@ class TestParseToolCallsFromResponse:
         assert "I should check the weather" in message.reasoning_content
         assert message.tool_calls is not None
         assert len(message.tool_calls) == 1
+
+    def test_should_fix_null_function_name_in_existing_tool_calls(self):
+        """Bug fix: function.name=None should be set to '' to prevent downstream crash."""
+        tool_calls = [
+            ChatCompletionMessageToolCall(
+                id="call_123",
+                type="function",
+                function=Function(name=None, arguments='{"city": "Tokyo"}'),
+            )
+        ]
+        response = self._make_response(
+            content="some content", tool_calls=tool_calls, finish_reason="stop"
+        )
+        parsed = self.config._parse_tool_calls_from_response(response)
+
+        message = parsed.choices[0].message
+        assert message.tool_calls is not None
+        assert message.tool_calls[0].function.name == ""
+        assert parsed.choices[0].finish_reason == "tool_calls"
+
+    def test_should_fix_finish_reason_for_existing_tool_calls_with_null_name(self):
+        """Bug fix: finish_reason should be 'tool_calls' even when function.name is None."""
+        tool_calls = [
+            ChatCompletionMessageToolCall(
+                id="call_456",
+                type="function",
+                function=Function(name=None, arguments='{"q": "test"}'),
+            ),
+            ChatCompletionMessageToolCall(
+                id="call_789",
+                type="function",
+                function=Function(name="search", arguments='{"q": "test2"}'),
+            ),
+        ]
+        response = self._make_response(
+            content=None, tool_calls=tool_calls, finish_reason="stop"
+        )
+        parsed = self.config._parse_tool_calls_from_response(response)
+
+        assert parsed.choices[0].finish_reason == "tool_calls"
+        assert parsed.choices[0].message.tool_calls[0].function.name == ""
+        assert parsed.choices[0].message.tool_calls[1].function.name == "search"
+
+    def test_should_be_noop_for_plain_text_without_native_tokens(self):
+        """Parsing is content-driven: plain text without native tokens is untouched."""
+        response = self._make_response(content="Just a normal answer", finish_reason="stop")
+        parsed = self.config._parse_tool_calls_from_response(response)
+
+        message = parsed.choices[0].message
+        assert message.content == "Just a normal answer"
+        assert message.tool_calls is None
+        assert parsed.choices[0].finish_reason == "stop"

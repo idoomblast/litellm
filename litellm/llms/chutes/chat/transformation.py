@@ -233,9 +233,12 @@ class ChutesChatConfig(OpenAIGPTConfig):
             # CRITICAL: If tool_calls already exist (from standard format), just clean up content
             if message.tool_calls:
                 # Strip whitespace from function names (Kimi K2 on Chutes adds extra spaces)
+                # Also fix null function.name to prevent downstream crash
                 for tc in message.tool_calls:
                     if tc.function and tc.function.name:
                         tc.function.name = tc.function.name.strip()
+                    elif tc.function and tc.function.name is None:
+                        tc.function.name = ""
 
                 # Strip native tokens from content fields (they're duplicates)
                 for field in TOOL_CALL_FIELDS:
@@ -299,7 +302,8 @@ class ChutesChatConfig(OpenAIGPTConfig):
         """
         Transform the response from the API.
 
-        For Kimi K2 models, this also parses native tool call tokens from content.
+        Parses native tool call tokens and <think> tags from content.
+        This is content-driven — a no-op if no special tokens are present.
 
         Returns:
             ModelResponse: The transformed response.
@@ -319,11 +323,11 @@ class ChutesChatConfig(OpenAIGPTConfig):
             json_mode=json_mode,
         )
 
-        # Check if model is Kimi K2 and parse tool calls from content
-        if self._is_kimi_k2_model(model):
-            response = self._parse_kimi_k2_tool_calls_from_response(
-                cast(ModelResponse, response)
-            )
+        # Always parse — content-driven, not model-name-driven.
+        # If no native tokens / <think> tags are present, this is a no-op.
+        response = self._parse_kimi_k2_tool_calls_from_response(
+            cast(ModelResponse, response)
+        )
 
         return cast(ModelResponse, response)
 

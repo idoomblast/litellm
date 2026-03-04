@@ -508,11 +508,16 @@ class ChutesChatCompletionStreamingHandler(BaseModelResponseIterator):
             self._saw_any_standard_tool_calls = True
             self._emitted_any_tool_calls = True
             # Strip whitespace from function names (Kimi K2 on Chutes adds extra spaces)
+            # Also fix null function.name to prevent downstream crash
             for tc in standard_tool_calls:
                 if isinstance(tc, dict):
                     func = tc.get("function")
-                    if isinstance(func, dict) and func.get("name"):
-                        func["name"] = func["name"].strip()
+                    if isinstance(func, dict):
+                        name = func.get("name")
+                        if name is None:
+                            func["name"] = ""
+                        elif name:
+                            func["name"] = name.strip()
 
         # Process each field for tool call tokens (this adds to _field_buffers)
         tool_calls_to_emit: List[ChatCompletionDeltaToolCall] = []

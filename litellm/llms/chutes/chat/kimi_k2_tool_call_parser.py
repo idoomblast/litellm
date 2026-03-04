@@ -422,15 +422,26 @@ def deduplicate_reasoning_parts(parts: List[str]) -> Optional[str]:
     return "\n".join(unique)
 
 
+# Models that use native tool call tokens (<|tool_calls_section_begin|> etc.)
+_NATIVE_TOOL_CALL_MODEL_PATTERNS = [
+    lambda m: "kimi" in m and "k2" in m,       # Kimi K2, K2.5, etc.
+    lambda m: "qwen3-coder" in m,               # Qwen3-Coder-Next, Qwen3-Coder-Plus
+]
+
+
 def is_kimi_k2_model(model: str) -> bool:
     """
-    Check if the model is a Kimi K2 model that uses native tool call format.
+    Check if the model uses native tool call format (special tokens).
+
+    Matches:
+    - Kimi K2 / K2.5 models
+    - Qwen3-Coder-Next / Qwen3-Coder-Plus models
 
     Args:
         model: Model name/identifier
 
     Returns:
-        True if the model is a Kimi K2 model
+        True if the model uses native tool call tokens
     """
     model_lower = model.lower()
-    return "kimi" in model_lower and "k2" in model_lower
+    return any(pattern(model_lower) for pattern in _NATIVE_TOOL_CALL_MODEL_PATTERNS)

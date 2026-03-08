@@ -1125,8 +1125,6 @@ class OpenAiResponsesToChatCompletionStreamIterator(BaseModelResponseIterator):
         elif event_type == "response.completed":
             # Response is fully complete - now we can signal is_finished=True
             # This ensures we don't prematurely end the stream before tool_calls arrive
-<<<<<<< HEAD
-            # Check if response contains function_call items to set correct finish_reason
             # Check if response contains function_call items to set correct finish_reason
             response_data = parsed_chunk.get("response", {})
             output_items = response_data.get("output", []) if isinstance(response_data, dict) else []

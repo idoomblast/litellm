@@ -9224,6 +9224,33 @@ def should_run_mock_completion(
     return False
 
 
+def validate_and_fix_thinking_param(thinking: Optional[dict]) -> Optional[dict]:
+    """
+    Validate and normalize the 'thinking' parameter.
+
+    Converts camelCase keys (e.g. 'budgetTokens') to snake_case ('budget_tokens').
+    If both forms exist, snake_case wins. Does not mutate the original dict.
+
+    Args:
+        thinking: The thinking parameter dict, or None.
+
+    Returns:
+        Normalized thinking dict, or None if input is None.
+    """
+    if thinking is None:
+        return None
+
+    result = dict(thinking)
+
+    # Normalize camelCase 'budgetTokens' -> snake_case 'budget_tokens'
+    if "budgetTokens" in result:
+        if "budget_tokens" not in result:
+            result["budget_tokens"] = result["budgetTokens"]
+        del result["budgetTokens"]
+
+    return result
+
+
 def __getattr__(name: str) -> Any:
     """Lazy import handler for utils module with cached registry for improved performance."""
     # Use cached registry from _lazy_imports instead of importing tuples every time

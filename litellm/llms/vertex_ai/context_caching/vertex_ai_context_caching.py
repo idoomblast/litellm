@@ -4,16 +4,13 @@ import httpx
 
 import litellm
 from litellm.caching.caching import Cache, LiteLLMCacheType
-from litellm.constants import MINIMUM_PROMPT_CACHE_TOKEN_COUNT
 from litellm.litellm_core_utils.litellm_logging import Logging
 from litellm.llms.custom_httpx.http_handler import (
     AsyncHTTPHandler,
     HTTPHandler,
     get_async_httpx_client,
 )
-from litellm._logging import verbose_logger
 from litellm.llms.openai.openai import AllMessageValues
-from litellm.utils import is_prompt_caching_valid_prompt
 from litellm.types.llms.vertex_ai import (
     CachedContentListAllResponseBody,
     VertexAICachedContentResponseObject,
@@ -24,6 +21,9 @@ from ..vertex_llm_base import VertexBase
 from .transformation import (
     separate_cached_messages,
     transform_openai_messages_to_gemini_context_caching,
+    get_context_cache_min_tokens,
+    estimate_message_tokens,
+    remove_cache_control_from_messages,
 )
 
 local_cache_obj = Cache(
@@ -51,7 +51,6 @@ class ContextCachingEndpoints(VertexBase):
         vertex_project: Optional[str],
         vertex_location: Optional[str],
         vertex_auth_header: Optional[str],
-        model: Optional[str] = None,
     ) -> Tuple[Optional[str], str]:
         """
         Internal function. Returns the token and url for the call.
@@ -61,11 +60,12 @@ class ContextCachingEndpoints(VertexBase):
         Returns
             token, url
         """
-        auth_header: Optional[str]
         if custom_llm_provider == "gemini":
-            auth_header = {"x-goog-api-key": gemini_api_key}  # type: ignore[assignment]
+            auth_header = None
             endpoint = "cachedContents"
-            url = "https://generativelanguage.googleapis.com/v1beta/{}".format(endpoint)
+            url = "https://generativelanguage.googleapis.com/v1beta/{}?key={}".format(
+                endpoint, gemini_api_key
+            )
         elif custom_llm_provider == "vertex_ai":
             auth_header = vertex_auth_header
             endpoint = "cachedContents"
@@ -81,6 +81,7 @@ class ContextCachingEndpoints(VertexBase):
             else:
                 url = f"https://{vertex_location}-aiplatform.googleapis.com/v1beta1/projects/{vertex_project}/locations/{vertex_location}/{endpoint}"
 
+
         return self._check_custom_proxy(
             api_base=api_base,
             custom_llm_provider=custom_llm_provider,
@@ -89,12 +90,10 @@ class ContextCachingEndpoints(VertexBase):
             stream=None,
             auth_header=auth_header,
             url=url,
-            model=model,
+            model=None,
             vertex_project=vertex_project,
             vertex_location=vertex_location,
-            vertex_api_version=(
-                "v1beta1" if custom_llm_provider == "vertex_ai_beta" else "v1"
-            ),
+            vertex_api_version="v1beta1" if custom_llm_provider == "vertex_ai_beta" else "v1",
         )
 
     def check_cache(
@@ -109,7 +108,6 @@ class ContextCachingEndpoints(VertexBase):
         vertex_project: Optional[str],
         vertex_location: Optional[str],
         vertex_auth_header: Optional[str],
-        model: Optional[str] = None,
     ) -> Optional[str]:
         """
         Checks if content already cached.
@@ -128,8 +126,7 @@ class ContextCachingEndpoints(VertexBase):
             api_base=api_base,
             vertex_project=vertex_project,
             vertex_location=vertex_location,
-            vertex_auth_header=vertex_auth_header,
-            model=model,
+            vertex_auth_header=vertex_auth_header
         )
 
         page_token: Optional[str] = None
@@ -202,8 +199,7 @@ class ContextCachingEndpoints(VertexBase):
         custom_llm_provider: Literal["vertex_ai", "vertex_ai_beta", "gemini"],
         vertex_project: Optional[str],
         vertex_location: Optional[str],
-        vertex_auth_header: Optional[str],
-        model: Optional[str] = None,
+        vertex_auth_header: Optional[str]
     ) -> Optional[str]:
         """
         Checks if content already cached.
@@ -222,8 +218,7 @@ class ContextCachingEndpoints(VertexBase):
             api_base=api_base,
             vertex_project=vertex_project,
             vertex_location=vertex_location,
-            vertex_auth_header=vertex_auth_header,
-            model=model,
+            vertex_auth_header=vertex_auth_header
         )
 
         page_token: Optional[str] = None
@@ -322,20 +317,6 @@ class ContextCachingEndpoints(VertexBase):
         if len(cached_messages) == 0:
             return messages, optional_params, None
 
-        # Gemini requires a minimum of 1024 tokens for context caching.
-        # Skip caching if the cached content is too small to avoid API errors.
-        if not is_prompt_caching_valid_prompt(
-            model=model,
-            messages=cached_messages,
-            custom_llm_provider=custom_llm_provider,
-        ):
-            verbose_logger.debug(
-                "Vertex AI context caching: cached content is below minimum token "
-                "count (%d). Skipping context caching.",
-                MINIMUM_PROMPT_CACHE_TOKEN_COUNT,
-            )
-            return messages, optional_params, None
-
         tools = optional_params.pop("tools", None)
 
         ## AUTHORIZATION ##
@@ -345,16 +326,13 @@ class ContextCachingEndpoints(VertexBase):
             api_base=api_base,
             vertex_project=vertex_project,
             vertex_location=vertex_location,
-            vertex_auth_header=vertex_auth_header,
-            model=model,
+            vertex_auth_header=vertex_auth_header
         )
 
         headers = {
             "Content-Type": "application/json",
         }
-        if isinstance(token, dict):
-            headers.update(token)
-        elif token is not None:
+        if token is not None:
             headers["Authorization"] = f"Bearer {token}"
         if extra_headers is not None:
             headers.update(extra_headers)
@@ -383,11 +361,49 @@ class ContextCachingEndpoints(VertexBase):
             custom_llm_provider=custom_llm_provider,
             vertex_project=vertex_project,
             vertex_location=vertex_location,
-            vertex_auth_header=vertex_auth_header,
-            model=model,
+            vertex_auth_header=vertex_auth_header
         )
         if google_cache_name:
             return non_cached_messages, optional_params, google_cache_name
+
+        ## VALIDATE MINIMUM TOKEN COUNT FOR CONTEXT CACHING
+        # Validate that cached content has enough tokens before creating cache.
+        # If insufficient, auto-disable caching and proceed without cache_control
+        min_tokens_required = get_context_cache_min_tokens(model)
+        estimated_tokens = estimate_message_tokens(cached_messages)
+        
+        if estimated_tokens < min_tokens_required:
+            # Log warning about auto-disabling caching
+            logging_obj.pre_call(
+                input=messages,
+                api_key="",
+                additional_args={
+                    "event": "context_caching_auto_disabled",
+                    "model": model,
+                    "estimated_tokens": estimated_tokens,
+                    "min_tokens_required": min_tokens_required,
+                    "reason": "Cached content too small for context caching",
+                },
+            )
+            
+            # Remove cache_control from all messages and proceed without caching
+            logging_obj.post_call(
+                input=None,
+                api_key="",
+                original_response=None,
+                additional_args={
+                    "event": "context_caching_auto_disabled_warning",
+                    "message": (
+                        f"Context caching auto-disabled for model '{model}': "
+                        f"estimated {estimated_tokens:,} tokens (minimum {min_tokens_required:,} required). "
+                        f"Proceeding without caching."
+                    )
+                },
+            )
+            
+            # Remove cache_control from all messages and return without cache
+            messages_without_cache = remove_cache_control_from_messages(messages)
+            return messages_without_cache, optional_params, None
 
         ## TRANSFORM REQUEST
         cached_content_request_body = (
@@ -472,20 +488,6 @@ class ContextCachingEndpoints(VertexBase):
         if len(cached_messages) == 0:
             return messages, optional_params, None
 
-        # Gemini requires a minimum of 1024 tokens for context caching.
-        # Skip caching if the cached content is too small to avoid API errors.
-        if not is_prompt_caching_valid_prompt(
-            model=model,
-            messages=cached_messages,
-            custom_llm_provider=custom_llm_provider,
-        ):
-            verbose_logger.debug(
-                "Vertex AI context caching: cached content is below minimum token "
-                "count (%d). Skipping context caching.",
-                MINIMUM_PROMPT_CACHE_TOKEN_COUNT,
-            )
-            return messages, optional_params, None
-
         tools = optional_params.pop("tools", None)
 
         ## AUTHORIZATION ##
@@ -495,16 +497,13 @@ class ContextCachingEndpoints(VertexBase):
             api_base=api_base,
             vertex_project=vertex_project,
             vertex_location=vertex_location,
-            vertex_auth_header=vertex_auth_header,
-            model=model,
+            vertex_auth_header=vertex_auth_header
         )
 
         headers = {
             "Content-Type": "application/json",
         }
-        if isinstance(token, dict):
-            headers.update(token)
-        elif token is not None:
+        if token is not None:
             headers["Authorization"] = f"Bearer {token}"
         if extra_headers is not None:
             headers.update(extra_headers)
@@ -530,12 +529,50 @@ class ContextCachingEndpoints(VertexBase):
             custom_llm_provider=custom_llm_provider,
             vertex_project=vertex_project,
             vertex_location=vertex_location,
-            vertex_auth_header=vertex_auth_header,
-            model=model,
+            vertex_auth_header=vertex_auth_header
         )
 
         if google_cache_name:
             return non_cached_messages, optional_params, google_cache_name
+
+        ## VALIDATE MINIMUM TOKEN COUNT FOR CONTEXT CACHING
+        # Validate that cached content has enough tokens before creating cache.
+        # If insufficient, auto-disable caching and proceed without cache_control
+        min_tokens_required = get_context_cache_min_tokens(model)
+        estimated_tokens = estimate_message_tokens(cached_messages)
+        
+        if estimated_tokens < min_tokens_required:
+            # Log warning about auto-disabling caching
+            logging_obj.pre_call(
+                input=messages,
+                api_key="",
+                additional_args={
+                    "event": "context_caching_auto_disabled",
+                    "model": model,
+                    "estimated_tokens": estimated_tokens,
+                    "min_tokens_required": min_tokens_required,
+                    "reason": "Cached content too small for context caching",
+                },
+            )
+            
+            # Remove cache_control from all messages and proceed without caching
+            logging_obj.post_call(
+                input=None,
+                api_key="",
+                original_response=None,
+                additional_args={
+                    "event": "context_caching_auto_disabled_warning",
+                    "message": (
+                        f"Context caching auto-disabled for model '{model}': "
+                        f"estimated {estimated_tokens:,} tokens (minimum {min_tokens_required:,} required). "
+                        f"Proceeding without caching."
+                    )
+                },
+            )
+            
+            # Remove cache_control from all messages and return without cache
+            messages_without_cache = remove_cache_control_from_messages(messages)
+            return messages_without_cache, optional_params, None
 
         ## TRANSFORM REQUEST
         cached_content_request_body = (

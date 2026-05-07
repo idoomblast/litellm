@@ -8170,6 +8170,12 @@ class ProviderConfigManager:
             LlmProviders.HYPERBOLIC: (lambda: litellm.HyperbolicChatConfig(), False),
             LlmProviders.OVHCLOUD: (lambda: litellm.OVHCloudChatConfig(), False),
             LlmProviders.AMAZON_NOVA: (lambda: litellm.AmazonNovaChatConfig(), False),
+            LlmProviders.CHUTES: (lambda: litellm.ChutesChatConfig(), False),
+            LlmProviders.XIAOMI_MIMO: (lambda: litellm.XiaomiMiMoChatConfig(), False),
+            LlmProviders.ALIBABA_CODING: (
+                lambda: litellm.AlibabaCodingChatConfig(),
+                False,
+            ),
             LlmProviders.LANGGRAPH: (
                 lambda: ProviderConfigManager._get_langgraph_config(),
                 False,

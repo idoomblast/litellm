@@ -3,10 +3,12 @@ export enum Providers {
   AI21 = "Ai21",
   AI21_CHAT = "Ai21 Chat",
   AIML = "AI/ML API",
+  alibaba_coding = "Alibaba Coding",
   AIOHTTP_OPENAI = "Aiohttp Openai",
   Anthropic = "Anthropic",
   ANTHROPIC_TEXT = "Anthropic Text",
   AssemblyAI = "AssemblyAI",
+  chutes = "Chutes",
   AUTO_ROUTER = "Auto Router",
   Bedrock = "Amazon Bedrock",
   BedrockMantle = "Amazon Bedrock Mantle",
@@ -102,6 +104,7 @@ export enum Providers {
   WATSONX = "Watsonx",
   WATSONX_TEXT = "Watsonx Text",
   xAI = "xAI",
+  xiaomi_mimo = "Xiaomi MiMo",
   XINFERENCE = "Xinference",
 }
 
@@ -111,6 +114,7 @@ export const provider_map: Record<string, string> = {
   AI21_CHAT: "ai21_chat",
   AIML: "aiml",
   AIOHTTP_OPENAI: "aiohttp_openai",
+  alibaba_coding: "alibaba_coding",
   Anthropic: "anthropic",
   ANTHROPIC_TEXT: "anthropic_text",
   AssemblyAI: "assemblyai",
@@ -123,6 +127,7 @@ export const provider_map: Record<string, string> = {
   BedrockMantle: "bedrock_mantle",
   BYTEZ: "bytez",
   Cerebras: "cerebras",
+  chutes: "chutes",
   CLARIFAI: "clarifai",
   CLOUDFLARE: "cloudflare",
   CODESTRAL: "codestral",
@@ -209,6 +214,7 @@ export const provider_map: Record<string, string> = {
   WATSONX: "watsonx",
   WATSONX_TEXT: "watsonx_text",
   xAI: "xai",
+  xiaomi_mimo: "xiaomi_mimo",
   XINFERENCE: "xinference",
 };
 
@@ -220,6 +226,7 @@ export const providerLogoMap: Record<string, string> = {
   [Providers.AI21_CHAT]: `${asset_logos_folder}ai21.svg`,
   [Providers.AIML]: `${asset_logos_folder}aiml_api.svg`,
   [Providers.AIOHTTP_OPENAI]: `${asset_logos_folder}openai_small.svg`,
+  [Providers.alibaba_coding]: `${asset_logos_folder}alibaba_coding.png`,
   [Providers.Anthropic]: `${asset_logos_folder}anthropic.svg`,
   [Providers.ANTHROPIC_TEXT]: `${asset_logos_folder}anthropic.svg`,
   [Providers.AssemblyAI]: `${asset_logos_folder}assemblyai_small.png`,
@@ -231,6 +238,7 @@ export const providerLogoMap: Record<string, string> = {
   [Providers.BedrockMantle]: `${asset_logos_folder}bedrock.svg`,
   [Providers.SageMaker]: `${asset_logos_folder}bedrock.svg`,
   [Providers.Cerebras]: `${asset_logos_folder}cerebras.svg`,
+  [Providers.chutes]: `${asset_logos_folder}chutes.png`,
   [Providers.CLOUDFLARE]: `${asset_logos_folder}cloudflare.svg`,
   [Providers.CODESTRAL]: `${asset_logos_folder}mistral.svg`,
   [Providers.Cohere]: `${asset_logos_folder}cohere.svg`,
@@ -298,6 +306,7 @@ export const providerLogoMap: Record<string, string> = {
   [Providers.WATSONX]: `${asset_logos_folder}watsonx.svg`,
   [Providers.WATSONX_TEXT]: `${asset_logos_folder}watsonx.svg`,
   [Providers.xAI]: `${asset_logos_folder}xai.svg`,
+  [Providers.xiaomi_mimo]: `${asset_logos_folder}xiaomi_mimo.png`,
   [Providers.XINFERENCE]: `${asset_logos_folder}xinference.svg`,
 };
 
@@ -366,6 +375,12 @@ export const getPlaceholder = (selectedProvider: string): string => {
     return "watsonx/ibm/granite-3-3-8b-instruct";
   } else if (selectedProvider === Providers.Cursor) {
     return "cursor/claude-4-sonnet";
+  } else if (selectedProvider === Providers.xiaomi_mimo) {
+    return "xiaomi_mimo/mimo-v2-flash";
+  } else if (selectedProvider === Providers.chutes) {
+    return "chutes/moonshotai/Kimi-K2.5-TEE";
+  } else if (selectedProvider === Providers.alibaba_coding) {
+    return "alibaba_coding/qwen3.5-plus";
   } else {
     return "gpt-3.5-turbo";
   }

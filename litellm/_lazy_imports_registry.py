@@ -262,6 +262,9 @@ LLM_CONFIG_NAMES = (
     "JinaAIEmbeddingConfig",
     "XAIChatConfig",
     "ZAIChatConfig",
+    "XiaomiMiMoChatConfig",
+    "ChutesChatConfig",
+    "AlibabaCodingChatConfig",
     "AIMLChatConfig",
     "VolcEngineChatConfig",
     "CodestralTextCompletionConfig",
@@ -1021,6 +1024,18 @@ _LLM_CONFIGS_IMPORT_MAP = {
     ),
     "XAIChatConfig": (".llms.xai.chat.transformation", "XAIChatConfig"),
     "ZAIChatConfig": (".llms.zai.chat.transformation", "ZAIChatConfig"),
+    "XiaomiMiMoChatConfig": (
+        ".llms.xiaomi_mimo.chat.transformation",
+        "XiaomiMiMoChatConfig",
+    ),
+    "ChutesChatConfig": (
+        ".llms.chutes.chat.transformation",
+        "ChutesChatConfig",
+    ),
+    "AlibabaCodingChatConfig": (
+        ".llms.alibaba_coding.chat.transformation",
+        "AlibabaCodingChatConfig",
+    ),
     "AIMLChatConfig": (".llms.aiml.chat.transformation", "AIMLChatConfig"),
     "VolcEngineChatConfig": (
         ".llms.volcengine.chat.transformation",

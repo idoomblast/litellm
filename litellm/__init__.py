@@ -1803,6 +1803,13 @@ if TYPE_CHECKING:
     )
     from .llms.xai.chat.transformation import XAIChatConfig as XAIChatConfig
     from .llms.zai.chat.transformation import ZAIChatConfig as ZAIChatConfig
+    from .llms.xiaomi_mimo.chat.transformation import (
+        XiaomiMiMoChatConfig as XiaomiMiMoChatConfig,
+    )
+    from .llms.chutes.chat.transformation import ChutesChatConfig as ChutesChatConfig
+    from .llms.alibaba_coding.chat.transformation import (
+        AlibabaCodingChatConfig as AlibabaCodingChatConfig,
+    )
     from .llms.aiml.chat.transformation import AIMLChatConfig as AIMLChatConfig
     from .llms.volcengine.chat.transformation import (
         VolcEngineChatConfig as VolcEngineChatConfig,

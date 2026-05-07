@@ -136,8 +136,7 @@ class VertexAIMoonshotConfig(OpenAIGPTConfig):
     @overload
     def _transform_messages(
         self, messages: List[AllMessageValues], model: str, is_async: Literal[True]
-    ) -> Coroutine[Any, Any, List[AllMessageValues]]:
-        ...
+    ) -> Coroutine[Any, Any, List[AllMessageValues]]: ...
 
     @overload
     def _transform_messages(
@@ -145,8 +144,7 @@ class VertexAIMoonshotConfig(OpenAIGPTConfig):
         messages: List[AllMessageValues],
         model: str,
         is_async: Literal[False] = False,
-    ) -> List[AllMessageValues]:
-        ...
+    ) -> List[AllMessageValues]: ...
 
     def _transform_messages(
         self, messages: List[AllMessageValues], model: str, is_async: bool = False
@@ -196,7 +194,9 @@ class VertexAIMoonshotConfig(OpenAIGPTConfig):
             # First, extract <think> content from message.content
             think_reasoning = None
             if message.content and "<think>" in message.content:
-                think_reasoning, cleaned = extract_think_content_complete(message.content)
+                think_reasoning, cleaned = extract_think_content_complete(
+                    message.content
+                )
                 # Update content with cleaned version (think tags removed)
                 message.content = cleaned
 
@@ -225,7 +225,11 @@ class VertexAIMoonshotConfig(OpenAIGPTConfig):
                 # Strip native tool tokens from content fields
                 for field in TOOL_CALL_FIELDS:
                     field_value = getattr(message, field, None)
-                    if field_value and isinstance(field_value, str) and has_tool_call_tokens(field_value):
+                    if (
+                        field_value
+                        and isinstance(field_value, str)
+                        and has_tool_call_tokens(field_value)
+                    ):
                         cleaned = strip_native_tool_tokens(field_value)
                         setattr(message, field, cleaned if cleaned else None)
 
@@ -237,7 +241,10 @@ class VertexAIMoonshotConfig(OpenAIGPTConfig):
                         tc.function.name = ""
 
                 # Fix finish_reason
-                if hasattr(choice, "finish_reason") and choice.finish_reason != "tool_calls":
+                if (
+                    hasattr(choice, "finish_reason")
+                    and choice.finish_reason != "tool_calls"
+                ):
                     choice.finish_reason = "tool_calls"
                 continue
 
@@ -259,7 +266,10 @@ class VertexAIMoonshotConfig(OpenAIGPTConfig):
             if all_tool_calls:
                 message.tool_calls = all_tool_calls
                 # Fix finish_reason
-                if hasattr(choice, "finish_reason") and choice.finish_reason != "tool_calls":
+                if (
+                    hasattr(choice, "finish_reason")
+                    and choice.finish_reason != "tool_calls"
+                ):
                     choice.finish_reason = "tool_calls"
 
         return response
@@ -357,7 +367,12 @@ class VertexAIMoonshotStreamingHandler(BaseModelResponseIterator):
     # Pattern to clean <tool_call> XML tags (GLM-style, if present)
     TOOL_CALL_XML_PATTERN = re.compile(r"</?tool_call>")
 
-    def __init__(self, streaming_response: Any, sync_stream: bool, json_mode: Optional[bool] = False):
+    def __init__(
+        self,
+        streaming_response: Any,
+        sync_stream: bool,
+        json_mode: Optional[bool] = False,
+    ):
         super().__init__(
             streaming_response=streaming_response,
             sync_stream=sync_stream,
@@ -441,7 +456,9 @@ class VertexAIMoonshotStreamingHandler(BaseModelResponseIterator):
             arg_begin_idx = tc_content.find(TOOL_CALL_ARGUMENT_BEGIN)
             if arg_begin_idx != -1:
                 tool_call_id = tc_content[:arg_begin_idx].strip()
-                arguments = tc_content[arg_begin_idx + len(TOOL_CALL_ARGUMENT_BEGIN):].strip()
+                arguments = tc_content[
+                    arg_begin_idx + len(TOOL_CALL_ARGUMENT_BEGIN) :
+                ].strip()
 
                 try:
                     func_name, _ = extract_tool_call_id_parts(tool_call_id)
@@ -464,7 +481,7 @@ class VertexAIMoonshotStreamingHandler(BaseModelResponseIterator):
 
         # Remove the processed tool section from buffer
         before_section = buffer[:begin_idx]
-        after_section = buffer[end_idx + len(TOOL_CALLS_SECTION_END):]
+        after_section = buffer[end_idx + len(TOOL_CALLS_SECTION_END) :]
         self._field_buffers[field] = before_section + after_section
 
         return tool_calls
@@ -543,9 +560,7 @@ class VertexAIMoonshotStreamingHandler(BaseModelResponseIterator):
 
     # ── Think tag state machine ──
 
-    def _process_content_for_think_tags(
-        self, content: str
-    ) -> tuple:
+    def _process_content_for_think_tags(self, content: str) -> tuple:
         """
         Process content and route to appropriate output based on think tag state.
 
@@ -573,7 +588,7 @@ class VertexAIMoonshotStreamingHandler(BaseModelResponseIterator):
                 if THINK_START_TAG in remaining:
                     idx = remaining.index(THINK_START_TAG)
                     content_out += remaining[:idx]
-                    remaining = remaining[idx + len(THINK_START_TAG):]
+                    remaining = remaining[idx + len(THINK_START_TAG) :]
                     self._in_think_block = True
                 else:
                     content_out += remaining
@@ -582,7 +597,7 @@ class VertexAIMoonshotStreamingHandler(BaseModelResponseIterator):
                 if THINK_END_TAG in remaining:
                     idx = remaining.index(THINK_END_TAG)
                     reasoning_out += remaining[:idx]
-                    remaining = remaining[idx + len(THINK_END_TAG):]
+                    remaining = remaining[idx + len(THINK_END_TAG) :]
                     self._in_think_block = False
                 else:
                     reasoning_out += remaining
@@ -706,7 +721,9 @@ class VertexAIMoonshotStreamingHandler(BaseModelResponseIterator):
         # Flush content buffer through think tag state machine
         remaining_content = self._flush_remaining_content("content")
         if remaining_content:
-            content_part, reasoning_part = self._process_content_for_think_tags(remaining_content)
+            content_part, reasoning_part = self._process_content_for_think_tags(
+                remaining_content
+            )
             if content_part:
                 content_out += content_part
             if reasoning_part:
@@ -830,13 +847,19 @@ class VertexAIMoonshotStreamingHandler(BaseModelResponseIterator):
             self._emitted_any_tool_calls = True
 
         # Determine final tool calls (priority: standard > parsed native)
-        final_tool_calls = standard_tool_calls if standard_tool_calls else (
-            tool_calls_to_emit if tool_calls_to_emit else None
+        final_tool_calls = (
+            standard_tool_calls
+            if standard_tool_calls
+            else (tool_calls_to_emit if tool_calls_to_emit else None)
         )
 
         # Fix finish_reason if needed
         final_finish_reason = finish_reason
-        if finish_reason and self._emitted_any_tool_calls and finish_reason != "tool_calls":
+        if (
+            finish_reason
+            and self._emitted_any_tool_calls
+            and finish_reason != "tool_calls"
+        ):
             final_finish_reason = "tool_calls"
 
         # Build response

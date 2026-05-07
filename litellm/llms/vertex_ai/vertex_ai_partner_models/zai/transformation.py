@@ -115,8 +115,7 @@ class ZAIChatConfig(OpenAIGPTConfig):
     @overload
     def _transform_messages(
         self, messages: List[AllMessageValues], model: str, is_async: Literal[True]
-    ) -> Coroutine[Any, Any, List[AllMessageValues]]:
-        ...
+    ) -> Coroutine[Any, Any, List[AllMessageValues]]: ...
 
     @overload
     def _transform_messages(
@@ -124,8 +123,7 @@ class ZAIChatConfig(OpenAIGPTConfig):
         messages: List[AllMessageValues],
         model: str,
         is_async: Literal[False] = False,
-    ) -> List[AllMessageValues]:
-        ...
+    ) -> List[AllMessageValues]: ...
 
     def _transform_messages(
         self, messages: List[AllMessageValues], model: str, is_async: bool = False
@@ -211,9 +209,9 @@ class ZAIChatCompletionStreamingHandler(BaseModelResponseIterator):
                                 content = choice["delta"]["content"]
                                 if "<tool_call>" in content:
                                     # Aggressive cleanup: remove entire content containing tool_call tags
-                                    choice["delta"][
-                                        "content"
-                                    ] = self.CONTENT_CLEANUP_PATTERN.sub("", content)
+                                    choice["delta"]["content"] = (
+                                        self.CONTENT_CLEANUP_PATTERN.sub("", content)
+                                    )
 
                             # Clean up function name in tool_calls if present
                             if "delta" in choice and "tool_calls" in choice["delta"]:
@@ -225,10 +223,10 @@ class ZAIChatCompletionStreamingHandler(BaseModelResponseIterator):
                                         function_name = tool_call["function"]["name"]
                                         if "<tool_call>" in function_name:
                                             # Clean up just the tags, keep the function name
-                                            tool_call["function"][
-                                                "name"
-                                            ] = self.FUNCTION_NAME_CLEANUP_PATTERN.sub(
-                                                "", function_name
+                                            tool_call["function"]["name"] = (
+                                                self.FUNCTION_NAME_CLEANUP_PATTERN.sub(
+                                                    "", function_name
+                                                )
                                             )
 
                     # Reconstruct the SSE format

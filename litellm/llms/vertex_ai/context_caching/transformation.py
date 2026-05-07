@@ -45,13 +45,13 @@ CONTEXT_CACHE_MIN_TOKENS: Dict[str, int] = {
 def get_context_cache_min_tokens(model: str) -> int:
     """
     Get the minimum token count required for context caching for a given model.
-    
+
     Args:
         model: The model name (e.g., "gemini-2.5-flash", "vertex_ai/gemini-2.5-pro")
-        
+
     Returns:
         int: Minimum number of tokens required for context caching
-        
+
     Examples:
         >>> get_context_cache_min_tokens("gemini-2.5-flash")
         1024
@@ -62,16 +62,16 @@ def get_context_cache_min_tokens(model: str) -> int:
     clean_model = model
     if "/" in model:
         clean_model = model.split("/")[-1]
-    
+
     # Look up exact match first
     if clean_model in CONTEXT_CACHE_MIN_TOKENS:
         return CONTEXT_CACHE_MIN_TOKENS[clean_model]
-    
+
     # Try partial match for versioned models (e.g., gemini-2.5-flash-001)
     for model_pattern, min_tokens in CONTEXT_CACHE_MIN_TOKENS.items():
         if clean_model.startswith(model_pattern):
             return min_tokens
-    
+
     # Default fallback for unknown models - use safest (highest) minimum
     return 32768
 
@@ -79,19 +79,19 @@ def get_context_cache_min_tokens(model: str) -> int:
 def estimate_message_tokens(messages: List[AllMessageValues]) -> int:
     """
     Estimate token count for a list of messages without making an API call.
-    
+
     Uses a character-based approximation: roughly 4 characters per token for English text.
     This is a simple estimation suitable for validation purposes before making actual API calls.
-    
+
     Note: This is an approximation. Actual token count may vary slightly.
     For exact counts, use the provider's countTokens endpoint.
-    
+
     Args:
         messages: List of messages in OpenAI format
-        
+
     Returns:
         int: Estimated token count
-        
+
     Examples:
         >>> estimate_message_tokens([{"role": "user", "content": "Hello world"}])
         3
@@ -99,13 +99,13 @@ def estimate_message_tokens(messages: List[AllMessageValues]) -> int:
         1
     """
     total_chars = 0
-    
+
     for message in messages:
         content = message.get("content")
-        
+
         if content is None:
             continue
-            
+
         # Handle string content
         if isinstance(content, str):
             total_chars += len(content)
@@ -127,15 +127,15 @@ def estimate_message_tokens(messages: List[AllMessageValues]) -> int:
                     # Handle cache_control in nested content (ignore for token count)
                     elif content_item.get("cache_control") is not None:
                         continue
-    
+
     # Character-based approximation: roughly 4 characters per token
     # This works reasonably well for English text
     estimated_tokens = total_chars / 4.0
-    
+
     # Add overhead for message structure (role, formatting, etc.)
     # Each message has some overhead for metadata
     estimated_tokens += len(messages) * 4
-    
+
     return int(estimated_tokens)
 
 
@@ -172,37 +172,37 @@ def get_first_continuous_block_idx(
 def extract_ttl_from_cached_messages(messages: List[AllMessageValues]) -> Optional[str]:
     """
     Extract TTL from cached messages. Returns the first valid TTL found.
-    
+
     Args:
         messages: List of messages to extract TTL from
-        
+
     Returns:
         Optional[str]: TTL string in format "3600s" or None if not found/invalid
     """
     for message in messages:
         if not is_cached_message(message):
             continue
-            
+
         content = message.get("content")
         if not content or isinstance(content, str):
             continue
-            
+
         for content_item in content:
             # Type check to ensure content_item is a dictionary before calling .get()
             if not isinstance(content_item, dict):
                 continue
-                
+
             cache_control = content_item.get("cache_control")
             if not cache_control or not isinstance(cache_control, dict):
                 continue
-                
+
             if cache_control.get("type") != "ephemeral":
                 continue
-                
+
             ttl = cache_control.get("ttl")
             if ttl and _is_valid_ttl_format(ttl):
                 return str(ttl)
-    
+
     return None
 
 
@@ -210,23 +210,23 @@ def _is_valid_ttl_format(ttl: str) -> bool:
     """
     Validate TTL format. Should be a string ending with 's' for seconds.
     Examples: "3600s", "7200s", "1.5s"
-    
+
     Args:
         ttl: TTL string to validate
-        
+
     Returns:
         bool: True if valid format, False otherwise
     """
     if not isinstance(ttl, str):
         return False
-    
+
     # TTL should end with 's' and contain a valid number before it
-    pattern = r'^([0-9]*\.?[0-9]+)s$'
+    pattern = r"^([0-9]*\.?[0-9]+)s$"
     match = re.match(pattern, ttl)
-    
+
     if not match:
         return False
-    
+
     try:
         # Ensure the numeric part is valid and positive
         numeric_part = float(match.group(1))
@@ -338,7 +338,7 @@ def transform_openai_messages_to_gemini_context_caching(
 ) -> CachedContentRequestBody:
     # Extract TTL from cached messages BEFORE system message transformation
     ttl = extract_ttl_from_cached_messages(messages)
-    
+
     supports_system_message = get_supports_system_message(
         model=model, custom_llm_provider=custom_llm_provider
     )
@@ -347,8 +347,10 @@ def transform_openai_messages_to_gemini_context_caching(
         supports_system_message=supports_system_message, messages=messages
     )
 
-    transformed_messages = _gemini_convert_messages_with_history(messages=new_messages, model=model)
-    
+    transformed_messages = _gemini_convert_messages_with_history(
+        messages=new_messages, model=model
+    )
+
     model_name = "models/{}".format(model)
 
     if custom_llm_provider == "vertex_ai" or custom_llm_provider == "vertex_ai_beta":
@@ -359,11 +361,11 @@ def transform_openai_messages_to_gemini_context_caching(
         model=model_name,
         displayName=cache_key,
     )
-    
+
     # Add TTL if present and valid
     if ttl:
         data["ttl"] = ttl
-    
+
     if transformed_system_messages is not None:
         data["system_instruction"] = transformed_system_messages
 

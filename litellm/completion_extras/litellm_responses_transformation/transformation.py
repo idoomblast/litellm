@@ -552,34 +552,84 @@ class LiteLLMResponsesTransformationHandler(CompletionTransformationBridge):
                 accumulated_tool_calls.append(tool_call_dict)
                 tool_call_index += 1
 
-            elif isinstance(item, dict) and handle_raw_dict_callback is not None:
-                # Handle raw dict responses (e.g., from GPT-5 Codex)
-                choice, index = handle_raw_dict_callback(item=item, index=index)
-                if choice is not None:
-                    choices.append(choice)
+            elif isinstance(item, dict):
+                item_type = item.get("type")
+                if item_type == "function_call":
+                    # Accumulate raw dict function_call items like typed ones
+                    # so they get merged into a single choice at the end
+                    tool_call_dict: Dict[str, Any] = {
+                        "id": item.get("call_id") or item.get("id", ""),
+                        "function": {
+                            "name": item.get("name", ""),
+                            "arguments": item.get("arguments", ""),
+                        },
+                        "type": "function",
+                    }
+                    # Preserve provider_specific_fields if present
+                    provider_specific_fields = item.get("provider_specific_fields")
+                    if provider_specific_fields and isinstance(
+                        provider_specific_fields, dict
+                    ):
+                        tool_call_dict["provider_specific_fields"] = (
+                            provider_specific_fields
+                        )
+                        tool_call_dict["function"][
+                            "provider_specific_fields"
+                        ] = provider_specific_fields
+                    accumulated_tool_calls.append(tool_call_dict)
+                    tool_call_index += 1
+                elif handle_raw_dict_callback is not None:
+                    # Handle other raw dict responses (e.g., message, reasoning)
+                    choice, index = handle_raw_dict_callback(item=item, index=index)
+                    if choice is not None:
+                        choices.append(choice)
             else:
                 pass  # don't fail request if item in list is not supported
 
-        # If we accumulated tool calls, create a single choice with all of them
+        # If we accumulated tool calls, merge them into existing message choice
+        # or create a new one. This ensures finish_reason="tool_calls" when
+        # tool calls are present (critical for agentic loops that check finish_reason).
         if accumulated_tool_calls:
-            msg = Message(
-                content=None,
-                tool_calls=accumulated_tool_calls,
-                reasoning_content=reasoning_content,
-                reasoning_items=cast(
-                    Optional[List[ChatCompletionReasoningItem]],
-                    (
-                        [pending_reasoning_item]
-                        if pending_reasoning_item is not None
-                        else None
+            # Try to merge into existing assistant message choice
+            merged = False
+            for choice in choices:
+                if (
+                    hasattr(choice, "message")
+                    and choice.message is not None
+                    and getattr(choice.message, "role", "assistant") == "assistant"
+                ):
+                    # Merge tool_calls into existing message and update finish_reason
+                    choice.message.tool_calls = accumulated_tool_calls
+                    if reasoning_content and not getattr(
+                        choice.message, "reasoning_content", None
+                    ):
+                        choice.message.reasoning_content = reasoning_content
+                    choice.finish_reason = "tool_calls"
+                    merged = True
+                    reasoning_content = None
+                    pending_reasoning_item = None
+                    break
+
+            if not merged:
+                # No existing message choice to merge into, create a new one
+                msg = Message(
+                    content=None,
+                    tool_calls=accumulated_tool_calls,
+                    reasoning_content=reasoning_content,
+                    reasoning_items=cast(
+                        Optional[List[ChatCompletionReasoningItem]],
+                        (
+                            [pending_reasoning_item]
+                            if pending_reasoning_item is not None
+                            else None
+                        ),
                     ),
-                ),
-            )
-            choices.append(
-                Choices(message=msg, finish_reason="tool_calls", index=index)
-            )
-            reasoning_content = None
-            pending_reasoning_item = None
+                )
+                choices.append(
+                    Choices(message=msg, finish_reason="tool_calls", index=index)
+                )
+                reasoning_content = None
+                pending_reasoning_item = None
 
         return choices
 

@@ -12356,7 +12356,7 @@
     "supports_tool_choice": true,
     "supports_function_calling": true
   },
-  "deepinfra/deepseek-v4-flash": {
+  "deepinfra/deepseek-ai/DeepSeek-V4-Flash": {
     "max_input_tokens": 1048576,
     "max_output_tokens": 16384,
     "max_tokens": 16384,

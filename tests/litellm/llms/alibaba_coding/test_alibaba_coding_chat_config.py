@@ -59,8 +59,8 @@ def test_map_openai_params_thinking_reasoning_effort():
             drop_params=False,
         )
 
-        assert "chat_template_kwargs" in result
+        assert "extra_body" in result
         assert (
-            result["chat_template_kwargs"]["enable_thinking"]
+            result["extra_body"]["chat_template_kwargs"]["enable_thinking"]
             == expected_enable_thinking
         )

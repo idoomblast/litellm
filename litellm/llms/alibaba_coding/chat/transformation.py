@@ -92,7 +92,9 @@ class AlibabaCodingChatConfig(OpenAIGPTConfig):
 
         if enable_thinking is not None:
             chat_template_kwargs["enable_thinking"] = enable_thinking
-            optional_params["chat_template_kwargs"] = chat_template_kwargs
+            extra_body = optional_params.get("extra_body", {})
+            extra_body["chat_template_kwargs"] = chat_template_kwargs
+            optional_params["extra_body"] = extra_body
 
         return optional_params
 

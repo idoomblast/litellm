@@ -5,11 +5,9 @@ Tests configuration, parameter handling, and native tool call parsing
 for Kimi K2 models on Alibaba Coding.
 """
 
-import pytest
 
 from litellm.llms.alibaba_coding.chat.transformation import (
     AlibabaCodingChatConfig,
-    DEFAULT_USER_AGENT,
 )
 from litellm.llms.alibaba_coding.chat.tool_call_parser import (
     TOOL_CALLS_SECTION_BEGIN,
@@ -64,7 +62,7 @@ class TestAlibabaCodingChatConfig:
             model=self.model,
             drop_params=False,
         )
-        assert result["chat_template_kwargs"]["enable_thinking"] is True
+        assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
 
     def test_should_map_thinking_disabled_dict(self):
         result = self.config.map_openai_params(
@@ -73,7 +71,7 @@ class TestAlibabaCodingChatConfig:
             model=self.model,
             drop_params=False,
         )
-        assert result["chat_template_kwargs"]["enable_thinking"] is False
+        assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is False
 
     def test_should_map_thinking_bool_true(self):
         result = self.config.map_openai_params(
@@ -82,7 +80,7 @@ class TestAlibabaCodingChatConfig:
             model=self.model,
             drop_params=False,
         )
-        assert result["chat_template_kwargs"]["enable_thinking"] is True
+        assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
 
     def test_should_map_thinking_bool_false(self):
         result = self.config.map_openai_params(
@@ -91,7 +89,7 @@ class TestAlibabaCodingChatConfig:
             model=self.model,
             drop_params=False,
         )
-        assert result["chat_template_kwargs"]["enable_thinking"] is False
+        assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is False
 
     def test_should_map_reasoning_effort_high(self):
         result = self.config.map_openai_params(
@@ -100,7 +98,7 @@ class TestAlibabaCodingChatConfig:
             model=self.model,
             drop_params=False,
         )
-        assert result["chat_template_kwargs"]["enable_thinking"] is True
+        assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
 
     def test_should_map_reasoning_effort_none(self):
         result = self.config.map_openai_params(
@@ -109,7 +107,7 @@ class TestAlibabaCodingChatConfig:
             model=self.model,
             drop_params=False,
         )
-        assert result["chat_template_kwargs"]["enable_thinking"] is False
+        assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is False
 
     def test_should_pass_through_standard_params(self):
         result = self.config.map_openai_params(

@@ -7,7 +7,6 @@ including Kimi K2 native tool call support.
 
 from typing import List, cast
 
-import pytest
 from litellm.llms.chutes.chat.transformation import ChutesChatConfig
 from litellm.llms.chutes.chat.streaming_handler import (
     ChutesChatCompletionStreamingHandler,
@@ -55,12 +54,12 @@ class TestChutesChatConfig:
             drop_params=False,
         )
 
-        # Verify the new mapping to chat_template_kwargs
-        assert "chat_template_kwargs" in result
-        assert result["chat_template_kwargs"]["enable_thinking"] is True
+        # Verify the new mapping to extra_body.chat_template_kwargs
+        assert "extra_body" in result
+        assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
 
     def test_thinking_parameter_disabled(self):
-        """Test that thinking parameter with disabled type maps to chat_template_kwargs."""
+        """Test that thinking parameter with disabled type maps to extra_body.chat_template_kwargs."""
         non_default_params = {
             "thinking": {"type": "disabled"},
         }
@@ -73,9 +72,9 @@ class TestChutesChatConfig:
             drop_params=False,
         )
 
-        # Verify the new mapping to chat_template_kwargs
-        assert "chat_template_kwargs" in result
-        assert result["chat_template_kwargs"]["enable_thinking"] is False
+        # Verify the new mapping to extra_body.chat_template_kwargs
+        assert "extra_body" in result
+        assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is False
 
     def test_map_openai_params_passes_through(self):
         """Test that standard params are passed through correctly."""
@@ -105,8 +104,6 @@ class TestChutesChatConfig:
         ]
 
         # Cast messages to AllMessageValues type for type checking
-        from litellm.types.llms.openai import AllMessageValues
-        from typing import cast
 
         typed_messages = cast(List[AllMessageValues], messages)
 
@@ -164,8 +161,8 @@ class TestChutesChatConfig:
                 drop_params=False,
             )
 
-            assert "chat_template_kwargs" in result
-            assert result["chat_template_kwargs"]["enable_thinking"] is True
+            assert "extra_body" in result
+            assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
 
     def test_reasoning_effort_none_minimal(self):
         """Test that reasoning_effort values 'none', 'minimal' map to enable_thinking=False."""
@@ -182,8 +179,8 @@ class TestChutesChatConfig:
                 drop_params=False,
             )
 
-            assert "chat_template_kwargs" in result
-            assert result["chat_template_kwargs"]["enable_thinking"] is False
+            assert "extra_body" in result
+            assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is False
 
     def test_thinking_with_existing_chat_template_kwargs(self):
         """Test that thinking parameter properly merges with existing chat_template_kwargs."""
@@ -202,12 +199,12 @@ class TestChutesChatConfig:
         )
 
         # Should merge, not overwrite
-        assert "chat_template_kwargs" in result
-        assert result["chat_template_kwargs"]["enable_thinking"] is True
-        assert result["chat_template_kwargs"]["existing_param"] == "value"
+        assert "extra_body" in result
+        assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
+        assert result["extra_body"]["chat_template_kwargs"]["existing_param"] == "value"
 
     def test_no_chat_template_kwargs_when_no_thinking(self):
-        """Test that no chat_template_kwargs is created when no thinking/reasoning_effort provided."""
+        """Test that no extra_body is created when no thinking/reasoning_effort provided."""
         non_default_params = {
             "temperature": 0.5,
         }
@@ -220,8 +217,8 @@ class TestChutesChatConfig:
             drop_params=False,
         )
 
-        # Should not have chat_template_kwargs when no thinking params
-        assert "chat_template_kwargs" not in result
+        # Should not have extra_body when no thinking params
+        assert "extra_body" not in result
 
     def test_thinking_direct_boolean(self):
         """Test that direct boolean thinking values work correctly."""
@@ -235,7 +232,7 @@ class TestChutesChatConfig:
             model=self.model,
             drop_params=False,
         )
-        assert result_true["chat_template_kwargs"]["enable_thinking"] is True
+        assert result_true["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
 
         # Test thinking=False
         non_default_params_false = {
@@ -247,7 +244,7 @@ class TestChutesChatConfig:
             model=self.model,
             drop_params=False,
         )
-        assert result_false["chat_template_kwargs"]["enable_thinking"] is False
+        assert result_false["extra_body"]["chat_template_kwargs"]["enable_thinking"] is False
 
 
 class TestChutesChatConfigKimiK2:

@@ -100,6 +100,15 @@ class TestAlibabaCodingChatConfig:
         )
         assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
 
+    def test_should_map_reasoning_effort_max(self):
+        result = self.config.map_openai_params(
+            non_default_params={"reasoning_effort": "max"},
+            optional_params={},
+            model=self.model,
+            drop_params=False,
+        )
+        assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
+
     def test_should_map_reasoning_effort_none(self):
         result = self.config.map_openai_params(
             non_default_params={"reasoning_effort": "none"},

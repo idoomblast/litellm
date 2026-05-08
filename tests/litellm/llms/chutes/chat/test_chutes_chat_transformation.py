@@ -146,9 +146,9 @@ class TestChutesChatConfig:
         assert api_base == "https://llm.chutes.ai/v1"
         assert api_key == custom_key
 
-    def test_reasoning_effort_low_medium_high(self):
-        """Test that reasoning_effort values 'low', 'medium', 'high' map to enable_thinking=True."""
-        for effort in ["low", "medium", "high"]:
+    def test_reasoning_effort_low_medium_high_max(self):
+        """Test that reasoning_effort values 'low', 'medium', 'high', 'max' map to enable_thinking=True."""
+        for effort in ["low", "medium", "high", "max"]:
             non_default_params = {
                 "reasoning_effort": effort,
             }

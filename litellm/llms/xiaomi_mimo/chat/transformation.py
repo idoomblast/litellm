@@ -56,7 +56,7 @@ class XiaomiMiMoChatConfig(OpenAIGPTConfig):
             # Xiaomi MiMo only supports {"type": "enabled"} or {"type": "disabled"}
             if reasoning_effort in ["none", "minimal"]:
                 optional_params["thinking"] = {"type": "disabled"}
-            elif reasoning_effort in ["low", "medium", "high"]:
+            elif reasoning_effort in ["low", "medium", "high", "max"]:
                 optional_params["thinking"] = {"type": "enabled"}
 
         return optional_params

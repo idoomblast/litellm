@@ -47,6 +47,7 @@ def test_map_openai_params_thinking_reasoning_effort():
         ({"thinking": {"type": "enabled"}}, True),
         ({"thinking": {"type": "disabled"}}, False),
         ({"reasoning_effort": "high"}, True),
+        ({"reasoning_effort": "max"}, True),
         ({"reasoning_effort": "minimal"}, False),
         ({"thinking": False, "reasoning_effort": "high"}, False),
     ]

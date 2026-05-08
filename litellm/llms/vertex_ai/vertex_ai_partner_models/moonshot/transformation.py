@@ -118,7 +118,7 @@ class VertexAIMoonshotConfig(OpenAIGPTConfig):
                     or thinking_value.lower() == "true"
                 )
         elif reasoning_effort is not None:
-            if reasoning_effort in ["low", "medium", "high"]:
+            if reasoning_effort in ["low", "medium", "high", "max"]:
                 enable_thinking = True
             elif reasoning_effort in ["none", "minimal"]:
                 enable_thinking = False
